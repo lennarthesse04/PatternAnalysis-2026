@@ -3,12 +3,11 @@ import glob
 import torch
 from torch.utils.data import Dataset
 import nibabel as nib
-
+import numpy as np
 
 class HipMRIDataset(Dataset):
     """
     Custom PyTorch Dataset for COMP3710 HipMRI 2D slices (.nii.gz format).
-    Written entirely using PyTorch tensor operations (no NumPy).
     """
     def __init__(self, data_dir, transform=None):
         """
@@ -19,10 +18,10 @@ class HipMRIDataset(Dataset):
         """
         self.data_dir = data_dir
         self.transform = transform
-
+        
         # Collect all .nii.gz files in the target directory
         self.file_paths = sorted(glob.glob(os.path.join(data_dir, "*.nii.gz")))
-
+        
         if len(self.file_paths) == 0:
             raise FileNotFoundError(f"No .nii.gz files found in {data_dir}")
 
@@ -31,28 +30,23 @@ class HipMRIDataset(Dataset):
 
     def __getitem__(self, idx):
         file_path = self.file_paths[idx]
-
-        # Load NIfTI file and extract raw tensor directly
-        nii_img = nib.load(file_path)
         
-        # Convert directly to PyTorch tensor from buffer memory
-        tensor_img = torch.as_tensor(nii_img.dataobj, dtype=torch.float32)
-
-        # Remove singleton dimensions (e.g. shape [H, W, 1] -> [H, W])
-        tensor_img = torch.squeeze(tensor_img)
-
-        # Min-Max Normalization using PyTorch operations [0.0, 1.0]
-        min_val = torch.min(tensor_img)
-        max_val = torch.max(tensor_img)
-        denom = max_val - min_val
-
-        if denom > 0:
-            tensor_img = (tensor_img - min_val) / denom
+        # Load NIfTI file using Nibabel
+        nii_img = nib.load(file_path)
+        img_data = nii_img.get_fdata(dtype=np.float32)
+        
+        # Remove singleton dimensions if any exist (e.g., shape (H, W, 1) -> (H, W))
+        img_data = np.squeeze(img_data)
+        
+        # Min-Max Normalization to scale pixel intensities between [0.0, 1.0]
+        min_val, max_val = np.min(img_data), np.max(img_data)
+        if max_val - min_val > 0:
+            img_data = (img_data - min_val) / (max_val - min_val)
         else:
-            tensor_img = torch.zeros_like(tensor_img)
+            img_data = np.zeros_like(img_data)
 
-        # Add Channel dimension -> shape: [1, H, W]
-        tensor_img = tensor_img.unsqueeze(0)
+        # Convert to PyTorch Tensor and add Channel dimension -> shape: [1, H, W]
+        tensor_img = torch.tensor(img_data, dtype=torch.float32).unsqueeze(0)
 
         if self.transform:
             tensor_img = self.transform(tensor_img)
