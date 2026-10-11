@@ -49,15 +49,14 @@ class HipMRIDataset(Dataset):
         # Convert to PyTorch Tensor and add Channel dimension -> shape: [1, H, W]
         tensor_img = torch.tensor(img_data, dtype=torch.float32).unsqueeze(0)
 
-        # Resize to uniform dimensions if a target size is set
-        if self.target_size is not None:
-            # F.interpolate expects 4D tensor [B, C, H, W], so we temporarily add a batch dim
-            tensor_img = F.interpolate(
-                tensor_img.unsqueeze(0), 
-                size=(256, 256),  # Target size (H, W)
-                mode='bilinear', 
-                align_corners=False
-            ).squeeze(0) # Remove batch dim back to [1, H, W]
+        # Resize to uniform dimensions
+        # F.interpolate expects 4D tensor [B, C, H, W], so we temporarily add a batch dim
+        tensor_img = F.interpolate(
+            tensor_img.unsqueeze(0), 
+            size=(256, 256),  # Target size (H, W)
+            mode='bilinear', 
+            align_corners=False
+        ).squeeze(0) # Remove batch dim back to [1, H, W]
 
         if self.transform:
             tensor_img = self.transform(tensor_img)
