@@ -45,6 +45,8 @@ class HipMRIDataset(Dataset):
             img_data = (img_data - min_val) / (max_val - min_val)
         else:
             img_data = np.zeros_like(img_data)
+        # Shift from [0, 1] to [-1, 1] for WGAN compatibility
+        img_data = img_data * 2.0 - 1.0
 
         # Convert to PyTorch Tensor and add Channel dimension -> shape: [1, H, W]
         tensor_img = torch.tensor(img_data, dtype=torch.float32).unsqueeze(0)
