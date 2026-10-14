@@ -64,7 +64,6 @@ def train_wgan_gp(
         epoch_generator_loss = 0.0
         epoch_gradient_penalty = 0.0
         epoch_batches = 0
-        min_gen_loss = float('inf')
         
         for i, real_imgs in enumerate(train_dataloader):
             # Handle dataset outputs if they return tuples (e.g., image + label)
@@ -183,20 +182,25 @@ def train_wgan_gp(
                     avg_val_generator_loss,
                 ])
         model.train()
-
-        # Save best generator model checkpoint
-        if epoch_generator_loss < min_gen_loss:
-            min_gen_loss = epoch_generator_loss
+        
+        if (epoch + 1) % 10 == 0:
             torch.save({
                 'epoch': epoch + 1,
                 'generator_state_dict': model.generator.state_dict(),
                 'critic_state_dict': model.critic.state_dict(),
-                'optimizer_G': optimizer_G.state_dict(),
-                'optimizer_C': optimizer_C.state_dict(),
-            }, os.path.join(checkpoint_dir, f"wgan_gp_best_epoch_{epoch+1}.pth"))
-            print(f"[*] Saved best model checkpoint at epoch {epoch+1} with generator loss {min_gen_loss:.4f}")
+            }, os.path.join(checkpoint_dir, f"wgan_gp_epoch_{epoch+1}.pth"))
 
     print(f"[*] Training complete. Total time: {(time.time() - start_time) / 3600:.2f} hours.")
+
+    # Save last generator model checkpoint
+    torch.save({
+        'epoch': 50,
+        'generator_state_dict': model.generator.state_dict(),
+        'critic_state_dict': model.critic.state_dict(),
+        'optimizer_G': optimizer_G.state_dict(),
+        'optimizer_C': optimizer_C.state_dict(),
+    }, os.path.join(checkpoint_dir, f"model_final.pth"))
+    print(f"[*] Saved best model checkpoint.")
 
 
 if __name__ == "__main__":
