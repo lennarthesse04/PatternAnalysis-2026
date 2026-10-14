@@ -1,4 +1,5 @@
 import os
+import csv
 import time
 import torch
 import torch.nn as nn
@@ -8,7 +9,8 @@ from dataset import HipMRIDataset
 from modules import WGANGP
 
 def train_wgan_gp(
-    data_dir,
+    train_data_dir,
+    val_data_dir,
     epochs=50,
     batch_size=64,
     latent_dim=128,
@@ -26,21 +28,21 @@ def train_wgan_gp(
     """
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(sample_dir, exist_ok=True)
+    validation_loss_file = os.path.join(checkpoint_dir, "validation_losses.csv")
+    with open(validation_loss_file, "w", newline="") as csv_file:
+        csv.writer(csv_file).writerow(["epoch", "critic_loss", "generator_loss"])
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[*] Training on device: {device}")
 
     # 1. Initialize Dataset & DataLoader
     # Note: drop_last=True ensures consistent batch sizes for gradient penalty calculations
-    dataset = HipMRIDataset(data_dir=data_dir)
-    dataloader = DataLoader(
-        dataset, 
-        batch_size=batch_size, 
-        shuffle=True, 
-        num_workers=4, 
-        drop_last=True
-    )
-    print(f"[*] Loaded dataset with {len(dataset)} samples.")
+    train_dataset = HipMRIDataset(data_dir=train_data_dir)
+    val_dataset = HipMRIDataset(data_dir=val_data_dir)
+
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, drop_last=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4, drop_last=True)
+    print(f"[*] Loaded dataset with {len(train_dataset)} training samples and {len(val_dataset)} validation samples.")
 
     # 2. Initialize Model
     model = WGANGP(latent_dim=latent_dim, img_channels=1, feature_map_size=64).to(device)
@@ -58,8 +60,13 @@ def train_wgan_gp(
 
     for epoch in range(epochs):
         epoch_start = time.time()
+        epoch_critic_loss = 0.0
+        epoch_generator_loss = 0.0
+        epoch_gradient_penalty = 0.0
+        epoch_batches = 0
+        min_gen_loss = float('inf')
         
-        for i, real_imgs in enumerate(dataloader):
+        for i, real_imgs in enumerate(train_dataloader):
             # Handle dataset outputs if they return tuples (e.g., image + label)
             if isinstance(real_imgs, (tuple, list)):
                 real_imgs = real_imgs[0]
@@ -108,14 +115,10 @@ def train_wgan_gp(
             optimizer_G.step()
 
             total_steps += 1
-
-            # Print batch status
-            if i % 50 == 0:
-                print(
-                    f"[Epoch {epoch+1}/{epochs}] [Batch {i}/{len(dataloader)}] "
-                    f"[C Loss: {loss_critic.item():.4f}] [G Loss: {loss_gen.item():.4f}] "
-                    f"[GP: {gradient_penalty.item():.4f}]"
-                )
+            epoch_critic_loss += loss_critic.item()
+            epoch_generator_loss += loss_gen.item()
+            epoch_gradient_penalty += gradient_penalty.item()
+            epoch_batches += 1
 
             # Save sample grids periodically
             if total_steps % sample_interval == 0:
@@ -133,19 +136,70 @@ def train_wgan_gp(
                 model.generator.train()
 
         epoch_duration = time.time() - epoch_start
-        print(f"--- Epoch {epoch+1} finished in {epoch_duration:.2f} seconds ---")
+        print(
+            f"[Epoch {epoch+1}/{epochs}] "
+            f"[C Loss: {epoch_critic_loss / epoch_batches:.4f}] "
+            f"[G Loss: {epoch_generator_loss / epoch_batches:.4f}] "
+            f"[GP: {epoch_gradient_penalty / epoch_batches:.4f}] "
+            f"finished in {epoch_duration:.2f} seconds"
+        )
 
-        # Save checkpoint per epoch
-        torch.save({
-            'epoch': epoch + 1,
-            'generator_state_dict': model.generator.state_dict(),
-            'critic_state_dict': model.critic.state_dict(),
-            'optimizer_G': optimizer_G.state_dict(),
-            'optimizer_C': optimizer_C.state_dict(),
-        }, os.path.join(checkpoint_dir, f"wgan_gp_epoch_{epoch+1}.pth"))
+        # calculate validation losses
+        model.eval()
+        val_critic_loss = 0.0
+        val_generator_loss = 0.0
+        val_batches = 0
+        with torch.no_grad():
+            for val_imgs in val_dataloader:
+                if isinstance(val_imgs, (tuple, list)):
+                    val_imgs = val_imgs[0]
+
+                val_imgs = val_imgs.to(device)
+                val_batch_size = val_imgs.size(0)
+
+                z_val = torch.randn(val_batch_size, latent_dim, device=device)
+                fake_val_imgs = model.generator(z_val)
+
+                real_validity = model.critic(val_imgs)
+                fake_validity = model.critic(fake_val_imgs)
+
+                # Standard Wasserstein evaluation loss (without gradient penalty)
+                val_critic_loss += (-torch.mean(real_validity) + torch.mean(fake_validity)).item()
+                val_generator_loss += (-torch.mean(fake_validity)).item()
+                val_batches += 1
+
+        if val_batches > 0:
+            avg_val_critic_loss = val_critic_loss / val_batches
+            avg_val_generator_loss = val_generator_loss / val_batches
+            print(
+                f"[Validation] "
+                f"[C Loss: {avg_val_critic_loss:.4f}] "
+                f"[G Loss: {avg_val_generator_loss:.4f}]"
+            )
+            with open(validation_loss_file, "a", newline="") as csv_file:
+                csv.writer(csv_file).writerow([
+                    epoch + 1,
+                    avg_val_critic_loss,
+                    avg_val_generator_loss,
+                ])
+        model.train()
+
+        # Save best generator model checkpoint
+        if epoch_generator_loss < min_gen_loss:
+            min_gen_loss = epoch_generator_loss
+            torch.save({
+                'epoch': epoch + 1,
+                'generator_state_dict': model.generator.state_dict(),
+                'critic_state_dict': model.critic.state_dict(),
+                'optimizer_G': optimizer_G.state_dict(),
+                'optimizer_C': optimizer_C.state_dict(),
+            }, os.path.join(checkpoint_dir, f"wgan_gp_best_epoch_{epoch+1}.pth"))
+            print(f"[*] Saved best model checkpoint at epoch {epoch+1} with generator loss {min_gen_loss:.4f}")
 
     print(f"[*] Training complete. Total time: {(time.time() - start_time) / 3600:.2f} hours.")
 
+
 if __name__ == "__main__":
     train_data_dir = "/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_train"
-    train_wgan_gp(data_dir=train_data_dir, epochs=2)
+    val_data_dir = "/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_validate"
+    train_wgan_gp(train_data_dir=train_data_dir, val_data_dir=val_data_dir, epochs=2)
