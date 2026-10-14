@@ -8,6 +8,26 @@ import torchvision.utils as vutils
 from dataset import HipMRIDataset
 from modules import WGANGP
 
+def save_epoch_samples(model, fixed_z, epoch, sample_dir):
+    """
+    Generates and saves a grid of sample images using fixed noise at the end of an epoch.
+    """
+    model.generator.eval()
+    with torch.no_grad():
+        gen_samples = model.generator(fixed_z)
+        # Rescale from [-1, 1] to [0, 1] for image saving
+        gen_samples = gen_samples * 0.5 + 0.5
+        os.makedirs(os.path.join(sample_dir, "sample_grids"), exist_ok=True)
+        # Saves as epoch_001.png, epoch_002.png, etc.
+        filename = os.path.join(sample_dir, f"sample_grids/epoch_{epoch + 1:03d}.png")
+        vutils.save_image(
+            gen_samples.cpu(), 
+            filename, 
+            nrow=4, 
+            normalize=False
+        )
+    model.generator.train()
+
 def train_wgan_gp(
     train_data_dir,
     val_data_dir,
@@ -19,7 +39,6 @@ def train_wgan_gp(
     b2=0.9,
     n_critic=5,
     lambda_gp=10.0,
-    sample_interval=500,
     checkpoint_dir="./checkpoints",
     sample_dir="./samples"
 ):
@@ -119,21 +138,7 @@ def train_wgan_gp(
             epoch_gradient_penalty += gradient_penalty.item()
             epoch_batches += 1
 
-            # Save sample grids periodically
-            if total_steps % sample_interval == 0:
-                model.generator.eval()
-                with torch.no_grad():
-                    gen_samples = model.generator(fixed_z)
-                    # Rescale from [-1, 1] to [0, 1] for image saving
-                    gen_samples = gen_samples * 0.5 + 0.5
-                    vutils.save_image(
-                        gen_samples.cpu(), 
-                        os.path.join(sample_dir, f"sample_step_{total_steps}.png"), 
-                        nrow=4, 
-                        normalize=False
-                    )
-                model.generator.train()
-
+        # Log epoch statistics
         epoch_duration = time.time() - epoch_start
         print(
             f"[Epoch {epoch+1}/{epochs}] "
@@ -143,7 +148,7 @@ def train_wgan_gp(
             f"finished in {epoch_duration:.2f} seconds"
         )
 
-        # calculate validation losses
+        # Calculate validation losses
         model.eval()
         val_critic_loss = 0.0
         val_generator_loss = 0.0
@@ -167,6 +172,7 @@ def train_wgan_gp(
                 val_generator_loss += (-torch.mean(fake_validity)).item()
                 val_batches += 1
 
+        # Log validation losses and save to CSV
         if val_batches > 0:
             avg_val_critic_loss = val_critic_loss / val_batches
             avg_val_generator_loss = val_generator_loss / val_batches
@@ -182,25 +188,18 @@ def train_wgan_gp(
                     avg_val_generator_loss,
                 ])
         model.train()
-        
-        if (epoch + 1) % 10 == 0:
-            torch.save({
-                'epoch': epoch + 1,
-                'generator_state_dict': model.generator.state_dict(),
-                'critic_state_dict': model.critic.state_dict(),
-            }, os.path.join(checkpoint_dir, f"wgan_gp_epoch_{epoch+1}.pth"))
+
+        # Save model checkpoints at the end of each epoch
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        torch.save({
+            'epoch': epoch + 1,
+            'generator_state_dict': model.generator.state_dict(),
+            'critic_state_dict': model.critic.state_dict(),
+        }, os.path.join(checkpoint_dir, f"wgan_gp_epoch_{epoch+1}.pth"))
+
+        save_epoch_samples(model, fixed_z, epoch, sample_dir)
 
     print(f"[*] Training complete. Total time: {(time.time() - start_time) / 3600:.2f} hours.")
-
-    # Save last generator model checkpoint
-    torch.save({
-        'epoch': 50,
-        'generator_state_dict': model.generator.state_dict(),
-        'critic_state_dict': model.critic.state_dict(),
-        'optimizer_G': optimizer_G.state_dict(),
-        'optimizer_C': optimizer_C.state_dict(),
-    }, os.path.join(checkpoint_dir, f"model_final.pth"))
-    print(f"[*] Saved best model checkpoint.")
 
 
 if __name__ == "__main__":
