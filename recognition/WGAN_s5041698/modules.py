@@ -63,32 +63,38 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
         
         # Maps latent vector into starting feature map dimensions (e.g., 4x4 or 8x8)
-        self.init_size = 8  # Assuming target image is 128x128 (8 -> 16 -> 32 -> 64 -> 128)
-        self.l1 = nn.Sequential(nn.Linear(latent_dim, base_filters * 8 * self.init_size * self.init_size))
+        self.init_size = 8 # Assuming target image is 256x256 (8 -> 16 -> 32 -> 64 -> 128 -> 256)
+        self.l1 = nn.Sequential(nn.Linear(latent_dim, base_filters * 16 * self.init_size * self.init_size))
 
         self.conv_blocks = nn.Sequential(
-            nn.BatchNorm2d(base_filters * 8),
+            nn.BatchNorm2d(base_filters * 16),
             nn.LeakyReLU(0.2, inplace=True),
             
             # Upsample to 16x16
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+            nn.Conv2d(base_filters * 16, base_filters * 8, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(base_filters * 8),
+            nn.LeakyReLU(0.2, inplace=True),
+
+            # Upsample to 32x32
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
             nn.Conv2d(base_filters * 8, base_filters * 4, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(base_filters * 4),
             nn.LeakyReLU(0.2, inplace=True),
 
-            # Upsample to 32x32
+            # Upsample to 64x64
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
             nn.Conv2d(base_filters * 4, base_filters * 2, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(base_filters * 2),
             nn.LeakyReLU(0.2, inplace=True),
 
-            # Upsample to 64x64
+            # Upsample to 128x128
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
             nn.Conv2d(base_filters * 2, base_filters, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(base_filters),
             nn.LeakyReLU(0.2, inplace=True),
 
-            # Upsample to 128x128 & Output Image Layer
+            # Upsample to 256x256 & Output Image Layer
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
             nn.Conv2d(base_filters, img_channels, kernel_size=3, stride=1, padding=1),
             nn.Tanh()  # Output range [-1, 1] matching medical normalization
@@ -119,23 +125,32 @@ class Critic(nn.Module):
             return block
 
         self.model = nn.Sequential(
+            # 256 -> 128
             nn.Conv2d(img_channels, base_filters, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
-            
+
+            # 128 -> 64
             nn.Conv2d(base_filters, base_filters * 2, kernel_size=3, stride=2, padding=1),
             nn.InstanceNorm2d(base_filters * 2, affine=True),
             nn.LeakyReLU(0.2, inplace=True),
 
+            # 64 -> 32
             nn.Conv2d(base_filters * 2, base_filters * 4, kernel_size=3, stride=2, padding=1),
             nn.InstanceNorm2d(base_filters * 4, affine=True),
             nn.LeakyReLU(0.2, inplace=True),
 
+            # 32 -> 16
             nn.Conv2d(base_filters * 4, base_filters * 8, kernel_size=3, stride=2, padding=1),
             nn.InstanceNorm2d(base_filters * 8, affine=True),
             nn.LeakyReLU(0.2, inplace=True),
 
+            # 16 -> 8
+            nn.Conv2d(base_filters * 8, base_filters * 16, kernel_size=3, stride=2, padding=1),
+            nn.InstanceNorm2d(base_filters * 16, affine=True),
+            nn.LeakyReLU(0.2, inplace=True),
+
             nn.Flatten(),
-            nn.Linear(base_filters * 8 * 8 * 8, 1) # Assumes 128x128 input spatial dimensions
+            nn.Linear(base_filters * 16 * 8 * 8, 1) # Assumes 256x256 input spatial dimensions
         )
 
     def forward(self, img):
