@@ -17,9 +17,8 @@ def save_epoch_samples(model, fixed_z, epoch, sample_dir):
         gen_samples = model.generator(fixed_z)
         # Rescale from [-1, 1] to [0, 1] for image saving
         gen_samples = gen_samples * 0.5 + 0.5
-        os.makedirs(os.path.join(sample_dir, "sample_grids"), exist_ok=True)
         # Saves as epoch_001.png, epoch_002.png, etc.
-        filename = os.path.join(sample_dir, f"sample_grids/epoch_{epoch + 1:03d}.png")
+        filename = os.path.join(sample_dir, f"epoch_{epoch + 1:03d}.png")
         vutils.save_image(
             gen_samples.cpu(), 
             filename, 
