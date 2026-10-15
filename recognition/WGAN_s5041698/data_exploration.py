@@ -144,3 +144,36 @@ plt.tight_layout()
 plt.savefig("plots/mri_outliers_audit.png", dpi=300, bbox_inches='tight')
 plt.show()
 print("Saved outlier comparison grid to 'plots/mri_outliers_audit.png'")
+
+# =========================================
+#  Random Sampling
+# =========================================
+
+# Randomly sample 10 unique indices from the dataset
+dataset_len = len(train_dataset)
+sampled_indices = np.random.choice(dataset_len, size=10, replace=False)
+
+print(f"Randomly sampled image indices: {sampled_indices}")
+
+fig, axes = plt.subplots(2, 5, figsize=(15, 6))
+axes = axes.flatten()
+
+for plot_idx, dataset_idx in enumerate(sampled_indices):
+    sample = train_dataset[dataset_idx]
+    img_tensor = sample[0] if isinstance(sample, (tuple, list)) else sample
+    
+    img_np = img_tensor.squeeze(0).cpu().numpy()
+    
+    axes[plot_idx].imshow(img_np, cmap='gray')
+    
+    # Optional: Display the mean if image_means is available, or calculate it directly from the tensor
+    mean_val = image_means[dataset_idx] if 'image_means' in locals() else img_np.mean()
+    axes[plot_idx].set_title(f"Idx: {dataset_idx}\nMean: {mean_val:.3f}", fontsize=10)
+    axes[plot_idx].axis('off')
+
+plt.suptitle("WGAN Data Audit: Randomly Sampled MRI Slices", fontsize=14, fontweight='bold')
+plt.tight_layout()
+plt.savefig("plots/mri_random_samples.png", dpi=300, bbox_inches='tight')
+plt.show()
+
+print("Saved random sample comparison grid to 'plots/mri_random_samples.png'")
