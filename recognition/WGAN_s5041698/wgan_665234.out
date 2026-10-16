@@ -1,0 +1,103 @@
+[*] Training on device: cuda
+[*] Loaded dataset with 11460 training samples and 660 validation samples.
+[Epoch 1/50] [C Loss: -48.1125] [G Loss: 20.8846] [GP: 1.3795] finished in 253.36 seconds
+[Validation] [C Loss: -37.5935] [G Loss: 0.1219]
+[Epoch 2/50] [C Loss: -34.7688] [G Loss: 7.3858] [GP: 1.0072] finished in 249.23 seconds
+[Validation] [C Loss: -11.5437] [G Loss: 4.4825]
+[Epoch 3/50] [C Loss: -30.0698] [G Loss: 0.7905] [GP: 0.8131] finished in 249.19 seconds
+[Validation] [C Loss: -11.6186] [G Loss: -2.0092]
+[Epoch 4/50] [C Loss: -27.5935] [G Loss: -2.1140] [GP: 0.7128] finished in 249.59 seconds
+[Validation] [C Loss: -13.6782] [G Loss: -0.4076]
+[Epoch 5/50] [C Loss: -25.8902] [G Loss: -2.2991] [GP: 0.6496] finished in 249.66 seconds
+[Validation] [C Loss: -8.2914] [G Loss: -21.7400]
+[Epoch 6/50] [C Loss: -24.7801] [G Loss: -9.1513] [GP: 0.6097] finished in 249.65 seconds
+[Validation] [C Loss: -9.8983] [G Loss: -14.9924]
+[Epoch 7/50] [C Loss: -23.8990] [G Loss: -12.1245] [GP: 0.5817] finished in 249.27 seconds
+[Validation] [C Loss: -8.7587] [G Loss: -19.7262]
+[Epoch 8/50] [C Loss: -23.0464] [G Loss: -19.0630] [GP: 0.5319] finished in 249.24 seconds
+[Validation] [C Loss: 4.4695] [G Loss: -35.6614]
+[Epoch 9/50] [C Loss: -22.1391] [G Loss: -25.2147] [GP: 0.5157] finished in 249.36 seconds
+[Validation] [C Loss: -9.2417] [G Loss: -29.0571]
+[Epoch 10/50] [C Loss: -21.4357] [G Loss: -26.7168] [GP: 0.5028] finished in 249.20 seconds
+[Validation] [C Loss: -9.4518] [G Loss: -41.0056]
+[Epoch 11/50] [C Loss: -20.4979] [G Loss: -31.3615] [GP: 0.4890] finished in 249.39 seconds
+[Validation] [C Loss: -0.6908] [G Loss: -63.7660]
+[Epoch 12/50] [C Loss: -20.0576] [G Loss: -37.7069] [GP: 0.4903] finished in 249.11 seconds
+[Validation] [C Loss: 7.9498] [G Loss: -56.7204]
+[Epoch 13/50] [C Loss: -19.8810] [G Loss: -44.1056] [GP: 0.4635] finished in 248.97 seconds
+[Validation] [C Loss: 0.2391] [G Loss: -50.7432]
+[Epoch 14/50] [C Loss: -19.4690] [G Loss: -50.6312] [GP: 0.4579] finished in 249.00 seconds
+[Validation] [C Loss: 2.0466] [G Loss: -61.1255]
+[Epoch 15/50] [C Loss: -19.7396] [G Loss: -55.5266] [GP: 0.4656] finished in 248.90 seconds
+[Validation] [C Loss: 2.8847] [G Loss: -71.0347]
+[Epoch 16/50] [C Loss: -19.2352] [G Loss: -60.2368] [GP: 0.4510] finished in 248.97 seconds
+[Validation] [C Loss: 1.7367] [G Loss: -71.9882]
+[Epoch 17/50] [C Loss: -18.7834] [G Loss: -65.9955] [GP: 0.4409] finished in 248.88 seconds
+[Validation] [C Loss: -0.9796] [G Loss: -72.3535]
+[Epoch 18/50] [C Loss: -18.7323] [G Loss: -71.3849] [GP: 0.4594] finished in 248.99 seconds
+[Validation] [C Loss: -2.4984] [G Loss: -82.7270]
+[Epoch 19/50] [C Loss: -19.1272] [G Loss: -73.5437] [GP: 0.4293] finished in 249.01 seconds
+[Validation] [C Loss: 0.9677] [G Loss: -81.9065]
+[Epoch 20/50] [C Loss: -18.6929] [G Loss: -77.7091] [GP: 0.4514] finished in 249.03 seconds
+[Validation] [C Loss: 1.9374] [G Loss: -94.2547]
+[Epoch 21/50] [C Loss: -18.5760] [G Loss: -85.3201] [GP: 0.4484] finished in 248.96 seconds
+[Validation] [C Loss: 2.9267] [G Loss: -93.5962]
+[Epoch 22/50] [C Loss: -18.9624] [G Loss: -90.4730] [GP: 0.4396] finished in 249.20 seconds
+[Validation] [C Loss: 7.4929] [G Loss: -109.7174]
+[Epoch 23/50] [C Loss: -18.7922] [G Loss: -95.2674] [GP: 0.4223] finished in 249.21 seconds
+[Validation] [C Loss: 3.6763] [G Loss: -104.4440]
+[Epoch 24/50] [C Loss: -18.6397] [G Loss: -100.1867] [GP: 0.4501] finished in 249.33 seconds
+[Validation] [C Loss: -0.2124] [G Loss: -116.8680]
+[Epoch 25/50] [C Loss: -18.4695] [G Loss: -103.7354] [GP: 0.4496] finished in 249.06 seconds
+[Validation] [C Loss: -2.7548] [G Loss: -107.0904]
+[Epoch 26/50] [C Loss: -18.4186] [G Loss: -105.4715] [GP: 0.4348] finished in 248.95 seconds
+[Validation] [C Loss: -0.7481] [G Loss: -104.0606]
+[Epoch 27/50] [C Loss: -18.5920] [G Loss: -106.9477] [GP: 0.4289] finished in 249.16 seconds
+[Validation] [C Loss: 10.6159] [G Loss: -119.1363]
+[Epoch 28/50] [C Loss: -18.3563] [G Loss: -110.0247] [GP: 0.4256] finished in 249.04 seconds
+[Validation] [C Loss: 0.0928] [G Loss: -124.9671]
+[Epoch 29/50] [C Loss: -18.3400] [G Loss: -113.9309] [GP: 0.4259] finished in 249.02 seconds
+[Validation] [C Loss: 2.1659] [G Loss: -128.7859]
+[Epoch 30/50] [C Loss: -18.1544] [G Loss: -120.8813] [GP: 0.4231] finished in 249.03 seconds
+[Validation] [C Loss: 1.4201] [G Loss: -123.2162]
+[Epoch 31/50] [C Loss: -18.5388] [G Loss: -122.4660] [GP: 0.4315] finished in 249.02 seconds
+[Validation] [C Loss: 5.8874] [G Loss: -132.9988]
+[Epoch 32/50] [C Loss: -18.2206] [G Loss: -126.6269] [GP: 0.4184] finished in 249.36 seconds
+[Validation] [C Loss: 2.4745] [G Loss: -130.2484]
+[Epoch 33/50] [C Loss: -18.0543] [G Loss: -125.6920] [GP: 0.4300] finished in 249.27 seconds
+[Validation] [C Loss: 3.4863] [G Loss: -139.3843]
+[Epoch 34/50] [C Loss: -17.9259] [G Loss: -128.3662] [GP: 0.4422] finished in 249.10 seconds
+[Validation] [C Loss: -1.3542] [G Loss: -130.2673]
+[Epoch 35/50] [C Loss: -17.6250] [G Loss: -132.2040] [GP: 0.4593] finished in 248.99 seconds
+[Validation] [C Loss: 1.2693] [G Loss: -143.6380]
+[Epoch 36/50] [C Loss: -18.0341] [G Loss: -133.1558] [GP: 0.4298] finished in 249.16 seconds
+[Validation] [C Loss: 2.1007] [G Loss: -129.3420]
+[Epoch 37/50] [C Loss: -18.0828] [G Loss: -134.0727] [GP: 0.4357] finished in 248.93 seconds
+[Validation] [C Loss: 4.7539] [G Loss: -135.1331]
+[Epoch 38/50] [C Loss: -17.7335] [G Loss: -135.8223] [GP: 0.4280] finished in 248.87 seconds
+[Validation] [C Loss: 0.1946] [G Loss: -133.7250]
+[Epoch 39/50] [C Loss: -18.1236] [G Loss: -138.2994] [GP: 0.4401] finished in 248.96 seconds
+[Validation] [C Loss: 6.5190] [G Loss: -140.5721]
+[Epoch 40/50] [C Loss: -17.6848] [G Loss: -139.9382] [GP: 0.4350] finished in 248.95 seconds
+[Validation] [C Loss: -4.6097] [G Loss: -140.7089]
+[Epoch 41/50] [C Loss: -17.8896] [G Loss: -138.9892] [GP: 0.4449] finished in 249.16 seconds
+[Validation] [C Loss: 6.1621] [G Loss: -145.0795]
+[Epoch 42/50] [C Loss: -17.5059] [G Loss: -143.1631] [GP: 0.4371] finished in 249.00 seconds
+[Validation] [C Loss: 9.2635] [G Loss: -151.0385]
+[Epoch 43/50] [C Loss: -17.7638] [G Loss: -145.6613] [GP: 0.4418] finished in 249.09 seconds
+[Validation] [C Loss: 3.2436] [G Loss: -153.5326]
+[Epoch 44/50] [C Loss: -17.7282] [G Loss: -147.2391] [GP: 0.4424] finished in 249.13 seconds
+[Validation] [C Loss: 2.0083] [G Loss: -148.5497]
+[Epoch 45/50] [C Loss: -17.6821] [G Loss: -148.0824] [GP: 0.4481] finished in 248.89 seconds
+[Validation] [C Loss: 1.4951] [G Loss: -146.9429]
+[Epoch 46/50] [C Loss: -17.5420] [G Loss: -147.4573] [GP: 0.4584] finished in 249.14 seconds
+[Validation] [C Loss: 5.6951] [G Loss: -147.8470]
+[Epoch 47/50] [C Loss: -17.3441] [G Loss: -150.0370] [GP: 0.4476] finished in 249.09 seconds
+[Validation] [C Loss: -1.9476] [G Loss: -157.8979]
+[Epoch 48/50] [C Loss: -17.0691] [G Loss: -151.8687] [GP: 0.4423] finished in 248.96 seconds
+[Validation] [C Loss: 4.1769] [G Loss: -157.3008]
+[Epoch 49/50] [C Loss: -17.9910] [G Loss: -151.6664] [GP: 0.4447] finished in 249.01 seconds
+[Validation] [C Loss: 2.2405] [G Loss: -163.5217]
+[Epoch 50/50] [C Loss: -17.3553] [G Loss: -151.8215] [GP: 0.4313] finished in 248.86 seconds
+[Validation] [C Loss: -0.9397] [G Loss: -152.5981]
+[*] Training complete. Total time: 3.54 hours.
