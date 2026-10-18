@@ -73,24 +73,28 @@ class Generator(nn.Module):
             # Upsample to 16x16
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
             nn.Conv2d(base_filters * 16, base_filters * 8, kernel_size=3, stride=1, padding=1),
+            ResNetBlock(base_filters * 8),
             nn.BatchNorm2d(base_filters * 8),
             nn.LeakyReLU(0.2, inplace=True),
 
             # Upsample to 32x32
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
             nn.Conv2d(base_filters * 8, base_filters * 4, kernel_size=3, stride=1, padding=1),
+            ResNetBlock(base_filters * 4),
             nn.BatchNorm2d(base_filters * 4),
             nn.LeakyReLU(0.2, inplace=True),
 
             # Upsample to 64x64
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
             nn.Conv2d(base_filters * 4, base_filters * 2, kernel_size=3, stride=1, padding=1),
+            ResNetBlock(base_filters * 2),
             nn.BatchNorm2d(base_filters * 2),
             nn.LeakyReLU(0.2, inplace=True),
 
             # Upsample to 128x128
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
             nn.Conv2d(base_filters * 2, base_filters, kernel_size=3, stride=1, padding=1),
+            ResNetBlock(base_filters),
             nn.BatchNorm2d(base_filters),
             nn.LeakyReLU(0.2, inplace=True),
 
@@ -128,26 +132,31 @@ class Critic(nn.Module):
             # 256 -> 128
             nn.Conv2d(img_channels, base_filters, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
+            nn.Dropout2d(0.25),
 
             # 128 -> 64
             nn.Conv2d(base_filters, base_filters * 2, kernel_size=3, stride=2, padding=1),
             nn.InstanceNorm2d(base_filters * 2, affine=True),
             nn.LeakyReLU(0.2, inplace=True),
+            nn.Dropout2d(0.25),
 
             # 64 -> 32
             nn.Conv2d(base_filters * 2, base_filters * 4, kernel_size=3, stride=2, padding=1),
             nn.InstanceNorm2d(base_filters * 4, affine=True),
             nn.LeakyReLU(0.2, inplace=True),
+            nn.Dropout2d(0.25),
 
             # 32 -> 16
             nn.Conv2d(base_filters * 4, base_filters * 8, kernel_size=3, stride=2, padding=1),
             nn.InstanceNorm2d(base_filters * 8, affine=True),
             nn.LeakyReLU(0.2, inplace=True),
+            nn.Dropout2d(0.25),
 
             # 16 -> 8
             nn.Conv2d(base_filters * 8, base_filters * 16, kernel_size=3, stride=2, padding=1),
             nn.InstanceNorm2d(base_filters * 16, affine=True),
             nn.LeakyReLU(0.2, inplace=True),
+            nn.Dropout2d(0.25),
 
             nn.Flatten(),
             nn.Linear(base_filters * 16 * 8 * 8, 1) # Assumes 256x256 input spatial dimensions
@@ -156,3 +165,19 @@ class Critic(nn.Module):
     def forward(self, img):
         validity = self.model(img)
         return validity
+
+
+class ResNetBlock(nn.Module):
+    """Residual block for sharper medical image generation."""
+    def __init__(self, channels):
+        super(ResNetBlock, self).__init__()
+        self.block = nn.Sequential(
+            nn.Conv2d(channels, channels, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(channels),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(channels, channels, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(channels)
+        )
+
+    def forward(self, x):
+        return x + self.block(x) # Skip connection preserves sharp details
