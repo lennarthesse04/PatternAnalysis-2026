@@ -74,29 +74,29 @@ class Generator(nn.Module):
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
             nn.Conv2d(base_filters * 16, base_filters * 8, kernel_size=3, stride=1, padding=1),
             ResNetBlock(base_filters * 8),
-            nn.BatchNorm2d(base_filters * 8),
-            nn.LeakyReLU(0.2, inplace=True),
+            # nn.BatchNorm2d(base_filters * 8),
+            # nn.LeakyReLU(0.2, inplace=True),
 
             # Upsample to 32x32
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
             nn.Conv2d(base_filters * 8, base_filters * 4, kernel_size=3, stride=1, padding=1),
             ResNetBlock(base_filters * 4),
-            nn.BatchNorm2d(base_filters * 4),
-            nn.LeakyReLU(0.2, inplace=True),
+            # nn.BatchNorm2d(base_filters * 4),
+            # nn.LeakyReLU(0.2, inplace=True),
 
             # Upsample to 64x64
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
             nn.Conv2d(base_filters * 4, base_filters * 2, kernel_size=3, stride=1, padding=1),
             ResNetBlock(base_filters * 2),
-            nn.BatchNorm2d(base_filters * 2),
-            nn.LeakyReLU(0.2, inplace=True),
+            # nn.BatchNorm2d(base_filters * 2),
+            # nn.LeakyReLU(0.2, inplace=True),
 
             # Upsample to 128x128
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
             nn.Conv2d(base_filters * 2, base_filters, kernel_size=3, stride=1, padding=1),
             ResNetBlock(base_filters),
-            nn.BatchNorm2d(base_filters),
-            nn.LeakyReLU(0.2, inplace=True),
+            # nn.BatchNorm2d(base_filters),
+            # nn.LeakyReLU(0.2, inplace=True),
 
             # Upsample to 256x256 & Output Image Layer
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),

@@ -17,7 +17,6 @@ def save_epoch_samples(model, fixed_z, epoch, sample_dir):
         gen_samples = model.generator(fixed_z)
         # Rescale from [-1, 1] to [0, 1] for image saving
         gen_samples = gen_samples * 0.5 + 0.5
-        # Saves as epoch_001.png, epoch_002.png, etc.
         filename = os.path.join(sample_dir, f"epoch_{epoch + 1:03d}.png")
         vutils.save_image(
             gen_samples.cpu(), 
@@ -39,22 +38,27 @@ def train_wgan_gp(
     n_critic=5,
     lambda_gp=10.0,
     checkpoint_dir="./checkpoints",
-    sample_dir="./samples"
+    sample_dir="./samples",
+    logs_dir="./logs"
 ):
     """
-    Training loop for WGAN-GP on medical imaging slices.
+    Training loop for WGAN-GP on medical imaging slices with GPU VRAM monitoring.
     """
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(sample_dir, exist_ok=True)
-    validation_loss_file = os.path.join(checkpoint_dir, "validation_losses.csv")
-    with open(validation_loss_file, "w", newline="") as csv_file:
-        csv.writer(csv_file).writerow(["epoch", "critic_loss", "generator_loss"])
+    os.makedirs(logs_dir, exist_ok=True)
+    
+    metrics_file = os.path.join(logs_dir, "training_metrics.csv")
+    with open(metrics_file, "w", newline="") as csv_file:
+        csv.writer(csv_file).writerow([
+            "epoch", "train_critic_loss", "train_gen_loss", 
+            "val_critic_loss", "val_gen_loss", "peak_vram_gb"
+        ])
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[*] Training on device: {device}")
 
     # 1. Initialize Dataset & DataLoader
-    # Note: drop_last=True ensures consistent batch sizes for gradient penalty calculations
     train_dataset = HipMRIDataset(data_dir=train_data_dir)
     val_dataset = HipMRIDataset(data_dir=val_data_dir)
 
@@ -78,6 +82,11 @@ def train_wgan_gp(
 
     for epoch in range(epochs):
         epoch_start = time.time()
+        
+        # Reset CUDA peak memory tracking for this epoch
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats(device)
+
         epoch_critic_loss = 0.0
         epoch_generator_loss = 0.0
         epoch_gradient_penalty = 0.0
@@ -92,7 +101,7 @@ def train_wgan_gp(
             batch_size_curr = real_imgs.size(0)
 
             # ---------------------
-            #  Train Critic (Discriminator)
+            #  Train Critic
             # ---------------------
             for _ in range(n_critic):
                 optimizer_C.zero_grad()
@@ -127,7 +136,6 @@ def train_wgan_gp(
 
             # Generator loss tries to maximize critic score on fake images
             loss_gen = -torch.mean(model.critic(fake_imgs))
-
             loss_gen.backward()
             optimizer_G.step()
 
@@ -137,15 +145,9 @@ def train_wgan_gp(
             epoch_gradient_penalty += gradient_penalty.item()
             epoch_batches += 1
 
-        # Log epoch statistics
-        epoch_duration = time.time() - epoch_start
-        print(
-            f"[Epoch {epoch+1}/{epochs}] "
-            f"[C Loss: {epoch_critic_loss / epoch_batches:.4f}] "
-            f"[G Loss: {epoch_generator_loss / epoch_batches:.4f}] "
-            f"[GP: {epoch_gradient_penalty / epoch_batches:.4f}] "
-            f"finished in {epoch_duration:.2f} seconds"
-        )
+        avg_train_C = epoch_critic_loss / epoch_batches
+        avg_train_G = epoch_generator_loss / epoch_batches
+        avg_GP = epoch_gradient_penalty / epoch_batches
 
         # Calculate validation losses
         model.eval()
@@ -171,25 +173,34 @@ def train_wgan_gp(
                 val_generator_loss += (-torch.mean(fake_validity)).item()
                 val_batches += 1
 
-        # Log validation losses and save to CSV
-        if val_batches > 0:
-            avg_val_critic_loss = val_critic_loss / val_batches
-            avg_val_generator_loss = val_generator_loss / val_batches
-            print(
-                f"[Validation] "
-                f"[C Loss: {avg_val_critic_loss:.4f}] "
-                f"[G Loss: {avg_val_generator_loss:.4f}]"
-            )
-            with open(validation_loss_file, "a", newline="") as csv_file:
-                csv.writer(csv_file).writerow([
-                    epoch + 1,
-                    avg_val_critic_loss,
-                    avg_val_generator_loss,
-                ])
+        avg_val_C = val_critic_loss / val_batches if val_batches > 0 else 0.0
+        avg_val_G = val_generator_loss / val_batches if val_batches > 0 else 0.0
+
+        # Capture Peak GPU VRAM Usage for this Epoch
+        peak_vram_gb = 0.0
+        if torch.cuda.is_available():
+            peak_vram_bytes = torch.cuda.max_memory_allocated(device)
+            peak_vram_gb = peak_vram_bytes / (1024 ** 3)  # Convert bytes to GB
+
+        epoch_duration = time.time() - epoch_start
+        print(
+            f"[Epoch {epoch+1}/{epochs}] "
+            f"[Train C: {avg_train_C:.4f}] [Train G: {avg_train_G:.4f}] [GP: {avg_GP:.4f}] "
+            f"[Val C: {avg_val_C:.4f}] [Val G: {avg_val_G:.4f}] "
+            f"[Peak VRAM: {peak_vram_gb:.2f} GB] "
+            f"({epoch_duration:.2f}s)"
+        )
+
+        # Log metrics to CSV
+        with open(metrics_file, "a", newline="") as csv_file:
+            csv.writer(csv_file).writerow([
+                epoch + 1, avg_train_C, avg_train_G, 
+                avg_val_C, avg_val_G, f"{peak_vram_gb:.4f}"
+            ])
+
         model.train()
 
-        # Save model checkpoints at the end of each epoch
-        os.makedirs(checkpoint_dir, exist_ok=True)
+        # Save checkpoint and sample grid
         torch.save({
             'epoch': epoch + 1,
             'generator_state_dict': model.generator.state_dict(),
@@ -204,4 +215,4 @@ def train_wgan_gp(
 if __name__ == "__main__":
     train_data_dir = "/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_train"
     val_data_dir = "/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_validate"
-    train_wgan_gp(train_data_dir=train_data_dir, val_data_dir=val_data_dir, epochs=50)
+    train_wgan_gp(train_data_dir=train_data_dir, val_data_dir=val_data_dir, epochs=60)
