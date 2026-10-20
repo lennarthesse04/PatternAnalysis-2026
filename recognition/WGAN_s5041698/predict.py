@@ -4,26 +4,45 @@ import numpy as np
 from torch.utils.data import DataLoader
 from skimage.metrics import structural_similarity as compute_ssim
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 from dataset import HipMRIDataset
 from modules import Generator
 
 def load_generator(checkpoint_path, latent_dim=128, device="cuda"):
-    """Loads the trained WGAN-GP generator from a saved checkpoint file."""
+    """
+    Loads the trained WGAN-GP generator from a saved checkpoint file.
+    """
     print(f"[*] Loading generator weights from: {checkpoint_path}")
     generator = Generator(latent_dim=latent_dim, img_channels=1, base_filters=64).to(device)
+    
     checkpoint = torch.load(checkpoint_path, map_location=device)
     
-    state_dict = checkpoint['generator_state_dict']
-    generator.load_state_dict(state_dict)
-    
+    generator.load_state_dict(checkpoint['generator_state_dict'])
+
     generator.eval()
     return generator
 
-def generate_synthetic_cohort(generator, num_samples=500, latent_dim=128, batch_size=64, device="cuda"):
+def evaluate_cohort_ssim(
+    checkpoint_path, 
+    test_data_dir="/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_test", 
+    num_samples=500, 
+    latent_dim=128, 
+    batch_size=64
+):
     """
-    Unified helper method to generate synthetic medical slices and return them in [0, 1] range.
+    Generates synthetic medical slices and computes SSIM against reference test slices.
     """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"[*] Evaluating on device: {device}")
+
+    # 1. Load Generator Model
+    generator = load_generator(checkpoint_path, latent_dim=latent_dim, device=device)
+
+    # 2. Load Reference Test Dataset
+    test_dataset = HipMRIDataset(data_dir=test_data_dir)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, drop_last=False)
+    print(f"[*] Reference test dataset loaded with {len(test_dataset)} samples.")
+
+    # 3. Generate Synthetic Cohort
     print(f"[*] Generating synthetic cohort of {num_samples} samples...")
     synthetic_images_list = []
     
@@ -34,130 +53,50 @@ def generate_synthetic_cohort(generator, num_samples=500, latent_dim=128, batch_
             z = torch.randn(curr_batch_size, latent_dim, device=device)
             fake_imgs = generator(z)
             
-            # Rescale from generator output range [-1, 1] to [0, 1]
+            # Rescale from generator output range [-1, 1] to [0, 1] for SSIM calculation
             fake_imgs = fake_imgs * 0.5 + 0.5
             synthetic_images_list.append(fake_imgs.cpu().numpy())
             generated_count += curr_batch_size
 
-    return np.concatenate(synthetic_images_list, axis=0)
+    # Concatenate all generated batches: shape [num_samples, 1, H, W]
+    synthetic_cohort = np.concatenate(synthetic_images_list, axis=0)
 
-def load_dataset_as_array(data_dir, max_samples=None):
-    """Unified helper method to load a dataset directory into a clean numpy array [N, H, W] in [0, 1]."""
-    print(f"[*] Loading dataset from {data_dir}...")
-    dataset = HipMRIDataset(data_dir=data_dir)
-    images_list = []
-    
-    limit = max_samples if max_samples else len(dataset)
-    for i in tqdm(range(min(len(dataset), limit)), desc=f"Loading {os.path.basename(data_dir)}"):
-        img = dataset[i]
-        if isinstance(img, (tuple, list)):
-            img = img[0]
-        # Rescale from [-1, 1] to [0, 1]
-        img_rescaled = img.numpy() * 0.5 + 0.5
-        images_list.append(img_rescaled[0])  # Drop channel dim to get [H, W]
-        
-    return np.stack(images_list, axis=0)
-
-def evaluate_cohort_ssim_optimized(
-    generator, 
-    test_data_dir="/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_test", 
-    num_samples=100, 
-    latent_dim=128, 
-    device="cuda"
-):
-    """
-    Computes SSIM between synthetic cohort and reference test slices 
-    using SSIM-based maximization for structural nearest-neighbor matching.
-    """
-    # 1. Generate synthetic cohort and ensure [0, 1] range
-    synthetic_cohort = generate_synthetic_cohort(generator, num_samples=num_samples, latent_dim=latent_dim, device=device)
-    if synthetic_cohort.min() < 0.0 or synthetic_cohort.max() > 1.0:
-        synthetic_cohort = synthetic_cohort * 0.5 + 0.5  # Rescale from [-1, 1] to [0, 1] if needed
-
-    # 2. Load real test cohort and ensure [0, 1] range
-    real_cohort = load_dataset_as_array(test_data_dir, max_samples=num_samples)
-    if real_cohort.min() < 0.0 or real_cohort.max() > 1.0:
-        real_cohort = real_cohort * 0.5 + 0.5  # Rescale from [-1, 1] to [0, 1] if needed
-
-    print("[*] Computing SSIM using Structural (SSIM-maximized) Nearest-Neighbor Matching...")
-    ssim_scores = []
-    ssim_output_dir = "./plots/ssim_pairs"
-    os.makedirs(ssim_output_dir, exist_ok=True)
-
-    for i in tqdm(range(num_samples), desc="Calculating Optimized SSIM"):
-        synth_slice = synthetic_cohort[i, 0] if synthetic_cohort.ndim == 4 else synthetic_cohort[i]
-        
-        best_score = -1.0
-        best_real_slice = None
-        # Find the real test slice that maximizes SSIM (true structural match)
-        for j in range(len(real_cohort)):
-            real_slice = real_cohort[j, 0] if real_cohort.ndim == 4 else real_cohort[j]
+    # 4. Gather Reference Real Slices
+    print("[*] Collecting reference test slices...")
+    real_images_list = []
+    for real_imgs in test_loader:
+        if isinstance(real_imgs, (tuple, list)):
+            real_imgs = real_imgs[0]
+        # Rescale real images to [0, 1] if they are in [-1, 1]
+        # (Adjust this scaling if your dataset class already returns [0, 1] or [0, 255])
+        real_imgs = real_imgs * 0.5 + 0.5
+        real_images_list.append(real_imgs.numpy())
+        if sum(len(x) for x in real_images_list) >= num_samples:
+            break
             
-            # Compute SSIM directly against candidate real slice
-            score = compute_ssim(real_slice, synth_slice, data_range=1.0)
-            if score > best_score:
-                best_score = score
-                best_real_slice = real_slice
-                
-        ssim_scores.append(best_score)
+    real_cohort = np.concatenate(real_images_list, axis=0)[:num_samples]
 
-        # Save the best matching synthetic/real pair for only the first five iterations.
-        if i < 5:
-            plt.imsave(
-                os.path.join(ssim_output_dir, f"pair_{i + 1}_synthetic.png"),
-                synth_slice,
-                cmap="gray",
-                vmin=0.0,
-                vmax=1.0,
-            )
-            plt.imsave(
-                os.path.join(ssim_output_dir, f"pair_{i + 1}_real_ssim_{best_score:.4f}.png"),
-                best_real_slice,
-                cmap="gray",
-                vmin=0.0,
-                vmax=1.0,
-            )
-
-    mean_ssim = np.mean(ssim_scores)
-    std_ssim = np.std(ssim_scores)
-
-    print("\n" + "="*40)
-    print(f"Optimized SSIM Evaluation Results (n={num_samples})")
-    print("="*40)
-    print(f"Mean SSIM : {mean_ssim:.4f}")
-    print(f"Std SSIM  : {std_ssim:.4f}")
-    print(f"Target    : > 0.60 (Acceptance Criteria)")
-    print("="*40)
-
-    return mean_ssim, std_ssim
-
-def evaluate_cohort_ssim(
-    generator, 
-    test_data_dir="/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_test", 
-    num_samples=500, 
-    latent_dim=128, 
-    device="cuda"
-):
-    """Computes SSIM between synthetic cohort and reference test slices using nearest-neighbor matching."""
-    synthetic_cohort = generate_synthetic_cohort(generator, num_samples=num_samples, latent_dim=latent_dim, device=device)
-    # synthetic_cohort = load_dataset_as_array(test_data_dir, max_samples=num_samples)  # Load real test slices for comparison
-    real_cohort = load_dataset_as_array(test_data_dir, max_samples=num_samples)
-
+    # 5. Compute SSIM Between Synthetic Cohort and Reference Real Cohort
     print("[*] Computing Structural Similarity Index (SSIM)...")
     ssim_scores = []
 
-    for i in tqdm(range(num_samples), desc="Calculating SSIM"):
+    # Compare each synthetic slice against its corresponding real test slice index 
+    # (or random pairing if preferred)
+    # Instead of direct index pairing:
+    for i in range(num_samples):
         synth_slice = synthetic_cohort[i, 0]
         
-        # Find the real test slice with the lowest L2 distance (best structural match)
-        distances = np.mean((real_cohort - synth_slice[np.newaxis, :, :]) ** 2, axis=(1, 2))
+        # Find the real slice in the test set that has the highest pixel/structural similarity
+        # (or lowest L2 distance) to this specific synthetic slice
+        distances = [np.mean((real_cohort[j, 0] - synth_slice) ** 2) for j in range(len(real_cohort))]
         best_match_idx = np.argmin(distances)
-        real_slice = real_cohort[best_match_idx]
+        real_slice = real_cohort[best_match_idx, 0]
         
         score = compute_ssim(real_slice, synth_slice, data_range=1.0)
         ssim_scores.append(score)
 
-    mean_ssim, std_ssim = np.mean(ssim_scores), np.std(ssim_scores)
+    mean_ssim = np.mean(ssim_scores)
+    std_ssim = np.std(ssim_scores)
 
     print("\n" + "="*40)
     print(f"SSIM Evaluation Results (n={num_samples})")
@@ -169,77 +108,11 @@ def evaluate_cohort_ssim(
 
     return mean_ssim, std_ssim
 
-def audit_nearest_neighbors(
-    generator,
-    train_data_dir="/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_train",
-    num_synthetic_samples=5,
-    num_neighbors=5,
-    latent_dim=128,
-    output_path="./plots/memorization_audit_grid.png",
-    device="cuda"
-):
-    """Audits synthetic images against training images for memorization and plots the neighbor grid."""
-    synthetic_array = generate_synthetic_cohort(generator, num_samples=num_synthetic_samples, latent_dim=latent_dim, device=device)
-    train_array = load_dataset_as_array(train_data_dir)
-
-    # Flatten for fast L2 distance computation
-    train_flat = train_array.reshape(train_array.shape[0], -1)
-    synthetic_flat = synthetic_array.reshape(synthetic_array.shape[0], -1)
-
-    print("[*] Computing nearest training neighbors...")
-    audit_results = []
-
-    for i in range(num_synthetic_samples):
-        synth_vec = synthetic_flat[i]
-        distances = np.linalg.norm(train_flat - synth_vec, axis=1)
-        nearest_indices = np.argsort(distances)[:num_neighbors]
-        nearest_distances = distances[nearest_indices]
-        
-        audit_results.append({
-            'synthetic_img': synthetic_array[i, 0],
-            'neighbor_imgs': [train_array[idx] for idx in nearest_indices],
-            'distances': nearest_distances
-        })
-        print(f"  -> Synthetic Sample {i+1}: Closest Training Neighbor Distance = {nearest_distances[0]:.4f}")
-
-    print(f"[*] Saving visual audit grid to {output_path}...")
-    fig, axes = plt.subplots(num_synthetic_samples, num_neighbors + 1, figsize=(14, 3 * num_synthetic_samples))
-    if num_synthetic_samples == 1:
-        axes = np.expand_dims(axes, axis=0)
-
-    for i, res in enumerate(audit_results):
-        axes[i, 0].imshow(res['synthetic_img'], cmap='gray')
-        axes[i, 0].set_title(f"Synthetic #{i+1}" if i == 0 else "", fontsize=10)
-        axes[i, 0].axis('off')
-        
-        for spine in axes[i, 0].spines.values():
-            spine.set_edgecolor('blue')
-            spine.set_linewidth(2)
-
-        for j, (n_img, dist) in enumerate(zip(res['neighbor_imgs'], res['distances'])):
-            ax = axes[i, j + 1]
-            ax.imshow(n_img, cmap='gray')
-            ax.set_title(f"Neighbor {j+1}\n(Dist: {dist:.1f})" if i == 0 else f"Dist: {dist:.1f}", fontsize=8)
-            ax.axis('off')
-
-    plt.suptitle("Privacy & Memorization Audit: Synthetic Slices vs. Nearest Training Scans", fontsize=14, y=0.98)
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.show()
-    print("[*] Audit complete!")
-
 if __name__ == "__main__":
-    checkpoint_file = f"./checkpoints/wgan_gp_epoch_64.pth"
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+    # Point this to your latest saved checkpoint from training
+    checkpoint_file = "./checkpoints/wgan_gp_epoch_45.pth"  # Update with your actual checkpoint path
+    
     if os.path.exists(checkpoint_file):
-        # Load generator once for both evaluation tasks
-        generator = load_generator(checkpoint_file, device=device)
-        
-        # 1. Run SSIM Evaluation
-        evaluate_cohort_ssim_optimized(generator, device=device)
-        
-        # 2. Run Memorization Nearest-Neighbor Audit & Plot Grid
-        # audit_nearest_neighbors(generator, device=device)
+        evaluate_cohort_ssim(checkpoint_path=checkpoint_file, num_samples=500)
     else:
-        print(f"[!] Checkpoint not found at {checkpoint_file}.")
+        print(f"[!] Checkpoint not found at {checkpoint_file}. Please check your path.")
