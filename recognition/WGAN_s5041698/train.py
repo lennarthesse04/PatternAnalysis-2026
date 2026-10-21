@@ -200,12 +200,13 @@ def train_wgan_gp(
 
         model.train()
 
-        # Save checkpoint and sample grid
-        torch.save({
-            'epoch': epoch + 1,
-            'generator_state_dict': model.generator.state_dict(),
-            'critic_state_dict': model.critic.state_dict(),
-        }, os.path.join(checkpoint_dir, f"wgan_gp_epoch_{epoch+1}.pth"))
+        if epoch > 35:
+            # Save checkpoint and sample grid
+            torch.save({
+                'epoch': epoch + 1,
+                'generator_state_dict': model.generator.state_dict(),
+                'critic_state_dict': model.critic.state_dict(),
+            }, os.path.join(checkpoint_dir, f"wgan_gp_epoch_{epoch+1}.pth"))
 
         save_epoch_samples(model, fixed_z, epoch, sample_dir)
 
@@ -215,4 +216,4 @@ def train_wgan_gp(
 if __name__ == "__main__":
     train_data_dir = "/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_train"
     val_data_dir = "/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_validate"
-    train_wgan_gp(train_data_dir=train_data_dir, val_data_dir=val_data_dir, epochs=60)
+    train_wgan_gp(train_data_dir=train_data_dir, val_data_dir=val_data_dir, epochs=75)

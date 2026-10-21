@@ -176,3 +176,81 @@ class ResNetBlock(nn.Module):
 
     def forward(self, x):
         return x + self.block(x) # Skip connection preserves sharp details
+
+
+class ConvVAE(nn.Module):
+    def __init__(self, in_channels=1, latent_dim=2):
+        super(ConvVAE, self).__init__()
+        self.latent_dim = latent_dim
+
+        # Encoder Architecture (256x256 -> 8x8)
+        self.encoder = nn.Sequential(
+            nn.Conv2d(in_channels, 32, kernel_size=4, stride=2, padding=1), # -> [32, 128, 128]
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),   # -> [64, 64, 64]
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),  # -> [128, 32, 32]
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1), # -> [256, 16, 16]
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1), # -> [512, 8, 8]
+            nn.BatchNorm2d(512),
+            nn.ReLU()
+        )
+
+        # Mean and Log-Variance Linear Layers
+        self.fc_mu = nn.Linear(512 * 8 * 8, latent_dim)
+        self.fc_logvar = nn.Linear(512 * 8 * 8, latent_dim)
+
+        # Decoder Architecture (8x8 -> 256x256)
+        self.decoder_input = nn.Linear(latent_dim, 512 * 8 * 8)
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1), # -> [256, 16, 16]
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1), # -> [128, 32, 32]
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),  # -> [64, 64, 64]
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),   # -> [32, 128, 128]
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.ConvTranspose2d(32, in_channels, kernel_size=4, stride=2, padding=1), # -> [in_channels, 256, 256]
+            nn.Sigmoid()
+        )
+
+    def encode(self, x):
+        h = self.encoder(x)
+        h = torch.flatten(h, start_dim=1)
+        mu = self.fc_mu(h)
+        logvar = self.fc_logvar(h)
+        return mu, logvar
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+
+    def decode(self, z):
+        h = self.decoder_input(z)
+        h = h.view(-1, 512, 8, 8)
+        return self.decoder(h)
+
+    def forward(self, x):
+        mu, logvar = self.encode(x)
+        z = self.reparameterize(mu, logvar)
+        recon_x = self.decode(z)
+        return recon_x, mu, logvar
+    
+    def vae_loss_function(self, recon_x, x, mu, logvar, beta=1.0):
+        # Binary Cross Entropy loss for reconstruction
+        BCE = nn.functional.binary_cross_entropy(recon_x, x, reduction='sum')
+        # Kullback-Leibler Divergence
+        KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        return BCE + beta * KLD, BCE, KLD
