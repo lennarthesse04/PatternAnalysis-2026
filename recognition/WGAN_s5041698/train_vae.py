@@ -52,7 +52,7 @@ if __name__ == "__main__":
         transforms.ToTensor()  # Normalizes to [0, 1]
     ])
 
-    train_dataset = HipMRIDataset(data_dir="./data/train", transform=transform)
+    train_dataset = HipMRIDataset(data_dir="/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_train", transform=transform)
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
 
     train_vae(train_dataloader, epochs=50)
