@@ -200,7 +200,7 @@ def train_wgan_gp(
 
         model.train()
 
-        if epoch > 35:
+        if epoch >= 20:
             # Save checkpoint and sample grid
             torch.save({
                 'epoch': epoch + 1,
@@ -216,4 +216,4 @@ def train_wgan_gp(
 if __name__ == "__main__":
     train_data_dir = "/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_train"
     val_data_dir = "/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_validate"
-    train_wgan_gp(train_data_dir=train_data_dir, val_data_dir=val_data_dir, epochs=75)
+    train_wgan_gp(train_data_dir=train_data_dir, val_data_dir=val_data_dir, epochs=50)

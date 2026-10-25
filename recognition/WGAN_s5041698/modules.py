@@ -71,35 +71,27 @@ class Generator(nn.Module):
             nn.LeakyReLU(0.2, inplace=True),
             
             # Upsample to 16x16
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+            nn.Upsample(scale_factor=2, mode='nearest'),
             nn.Conv2d(base_filters * 16, base_filters * 8, kernel_size=3, stride=1, padding=1),
             ResNetBlock(base_filters * 8),
-            # nn.BatchNorm2d(base_filters * 8),
-            # nn.LeakyReLU(0.2, inplace=True),
 
             # Upsample to 32x32
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+            nn.Upsample(scale_factor=2, mode='nearest'),
             nn.Conv2d(base_filters * 8, base_filters * 4, kernel_size=3, stride=1, padding=1),
             ResNetBlock(base_filters * 4),
-            # nn.BatchNorm2d(base_filters * 4),
-            # nn.LeakyReLU(0.2, inplace=True),
 
             # Upsample to 64x64
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+            nn.Upsample(scale_factor=2, mode='nearest'),
             nn.Conv2d(base_filters * 4, base_filters * 2, kernel_size=3, stride=1, padding=1),
             ResNetBlock(base_filters * 2),
-            # nn.BatchNorm2d(base_filters * 2),
-            # nn.LeakyReLU(0.2, inplace=True),
 
             # Upsample to 128x128
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+            nn.Upsample(scale_factor=2, mode='nearest'),
             nn.Conv2d(base_filters * 2, base_filters, kernel_size=3, stride=1, padding=1),
             ResNetBlock(base_filters),
-            # nn.BatchNorm2d(base_filters),
-            # nn.LeakyReLU(0.2, inplace=True),
 
             # Upsample to 256x256 & Output Image Layer
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+            nn.Upsample(scale_factor=2, mode='nearest'),
             nn.Conv2d(base_filters, img_channels, kernel_size=3, stride=1, padding=1),
             nn.Tanh()  # Output range [-1, 1] matching medical normalization
         )
@@ -118,15 +110,6 @@ class Critic(nn.Module):
     """
     def __init__(self, img_channels=1, base_filters=64):
         super(Critic, self).__init__()
-
-        def discriminator_block(in_filters, out_filters, bn=True):
-            block = [nn.Conv2d(in_filters, out_filters, kernel_size=3, stride=2, padding=1)]
-            if bn:
-                # LayerNorm is preferred over BatchNorm in WGAN-GP critics
-                block.append(nn.LayerNorm([out_filters, 64, 64])) # Dynamic sizing handled downstream if resolution changes
-            block.append(nn.LeakyReLU(0.2, inplace=True))
-            # block.append(nn.Dropout2d(0.25))
-            return block
 
         self.model = nn.Sequential(
             # 256 -> 128
