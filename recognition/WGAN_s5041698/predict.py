@@ -1,7 +1,9 @@
 import os
+import re
 import torch
+import torchvision.utils as vutils
 import numpy as np
-from torch.utils.data import DataLoader
+from torchmetrics.image.fid import FrechetInceptionDistance
 from skimage.metrics import structural_similarity as compute_ssim
 from tqdm import tqdm
 import matplotlib.pyplot as plt
@@ -32,7 +34,7 @@ def generate_synthetic_cohort(generator, num_samples=500, latent_dim=128, batch_
     """
     print(f"[*] Generating synthetic cohort of {num_samples} samples...")
     synthetic_images_list = []
-    
+
     with torch.no_grad():
         generated_count = 0
         while generated_count < num_samples:
@@ -41,12 +43,12 @@ def generate_synthetic_cohort(generator, num_samples=500, latent_dim=128, batch_
 
             # Check if it's a VAE or a GAN Generator
             if hasattr(generator, "decode"):
-                # VAE decoding step
                 fake_imgs = generator.decode(z)
+                # VAE outputs in [0,1] (Sigmoid) -> convert to [-1,1] for compatibility
+                fake_imgs = fake_imgs * 2.0 - 1.0
             else:
-                # WGAN-GP / GAN forward step
                 fake_imgs = generator(z)
-            
+
             # Rescale from generator output range [-1, 1] to [0, 1]
             fake_imgs = fake_imgs * 0.5 + 0.5
             synthetic_images_list.append(fake_imgs.cpu().numpy())
@@ -54,11 +56,75 @@ def generate_synthetic_cohort(generator, num_samples=500, latent_dim=128, batch_
 
     return np.concatenate(synthetic_images_list, axis=0)
 
-def load_dataset_as_array(data_dir, max_samples=None):
-    """Unified helper method to load a dataset directory into a clean numpy array [N, H, W] in [0, 1]."""
+
+def generate_image_grid(generator, grid_size=(5, 5), latent_dim=128, device="cuda", save_individual=False, save_dir="./plots"):
+    """
+    Generates a grid of synthetic images and returns the grid tensor along with 
+    the latent vectors (z) used to reproduce them.
+    Optionally saves each image separately and saves z vectors.
+    """
+    num_samples = grid_size[0] * grid_size[1]
+    cols = grid_size[1]
+        
+    generator.eval()
+
+    print(f"[*] Generating image grid of size {grid_size} ({num_samples} samples)...")
+    
+    with torch.no_grad():
+        # Sample latent vectors
+        z = torch.randn(num_samples, latent_dim, device=device)
+
+        # Check if it's a VAE or a GAN Generator
+        if hasattr(generator, "decode"):
+            fake_imgs = generator.decode(z)
+            fake_imgs = fake_imgs * 2.0 - 1.0
+        else:
+            fake_imgs = generator(z)
+
+        # Rescale from generator output range [-1, 1] to [0, 1]
+        fake_imgs = fake_imgs * 0.5 + 0.5
+        
+        # Arrange images into a grid
+        grid_tensor = vutils.make_grid(fake_imgs, nrow=cols, normalize=False)
+    
+    if save_individual:
+        os.makedirs(os.path.join(save_dir, "individual"), exist_ok=True)
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # Save latent vectors
+        torch.save(z, os.path.join(save_dir, "latent_vectors.pt"))
+        np.save(os.path.join(save_dir, "latent_vectors.npy"), z.cpu().numpy())
+        print(f"[+] Saved latent vectors to {save_dir}/latent_vectors.pt and {save_dir}/latent_vectors.npy")
+        
+        # Save each image separately
+        for i in range(num_samples):
+            img = fake_imgs[i]  # [1, H, W]
+            img_np = img.cpu().squeeze(0).numpy()  # [H, W]
+            plt.imsave(os.path.join(save_dir, "individual", f"image_{i:03d}.png"), 
+                       img_np, cmap="gray", vmin=0, vmax=1)
+        
+        print(f"[+] Saved {num_samples} individual images to {save_dir}/individual/")
+
+    # Save the grid for reference
+    grid_np = grid_tensor.cpu().permute(1, 2, 0).numpy()
+    plt.figure(figsize=(16, 16))
+    plt.imshow(grid_np, cmap="gray" if grid_np.shape[2] == 1 else None)
+    plt.axis("off")
+    plt.savefig(f"{save_dir}/individual/synthetic_grid.png", dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"[+] Saved synthetic image grid to {save_dir}/individual/synthetic_grid.png")
+
+    return grid_tensor, z
+
+def load_dataset_as_array(data_dir, max_samples=None, return_case_ids=False):
+    """
+    Unified helper method to load a dataset directory into a clean numpy array [N, H, W] in [0, 1].
+    Optionally extracts and returns patient case IDs parsed from filenames.
+    """
     print(f"[*] Loading dataset from {data_dir}...")
     dataset = HipMRIDataset(data_dir=data_dir)
     images_list = []
+    case_ids = []
     
     limit = max_samples if max_samples else len(dataset)
     for i in tqdm(range(min(len(dataset), limit)), desc=f"Loading {os.path.basename(data_dir)}"):
@@ -68,8 +134,66 @@ def load_dataset_as_array(data_dir, max_samples=None):
         # Rescale from [-1, 1] to [0, 1]
         img_rescaled = img.numpy() * 0.5 + 0.5
         images_list.append(img_rescaled[0])  # Drop channel dim to get [H, W]
+
+        if return_case_ids:
+            file_name = os.path.basename(dataset.file_paths[i])
+            # Match pattern like 'case_004' from 'case_004_week_0_slice_0.nii.gz'
+            match = re.search(r'(case_\d+)', file_name)
+            case_id = match.group(1) if match else file_name.split('_')[0]
+            case_ids.append(case_id)
         
-    return np.stack(images_list, axis=0)
+    imgs_array = np.stack(images_list, axis=0)
+    if return_case_ids:
+        return imgs_array, np.array(case_ids)
+    return imgs_array
+
+
+def compute_inter_patient_train_nearest_neighbors(
+    train_data_dir="/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_train",
+    train_array=None,
+    case_ids=None,
+    max_samples=None,
+    batch_size=200
+):
+    """
+    Calculates the nearest neighbor Euclidean distance between scans of distinct patients in the training set.
+    For each scan, considers only other scans belonging to a different case/patient ID.
+    Returns:
+        dict: Summary statistics including mean, min, and array of nearest neighbor distances.
+    """
+    print("[*] Computing nearest neighbor distances between scans of distinct patients in train set...")
+    if train_array is None or case_ids is None:
+        train_array, case_ids = load_dataset_as_array(train_data_dir, max_samples=max_samples, return_case_ids=True)
+
+    N = train_array.shape[0]
+    train_flat = train_array.reshape(N, -1).astype(np.float32)
+
+    # Compute squared norms for efficient batch Euclidean distance
+    norms_sq = np.sum(train_flat ** 2, axis=1)
+    min_inter_patient_dists = np.full(N, np.inf, dtype=np.float32)
+
+    for i in tqdm(range(0, N, batch_size), desc="Computing inter-patient NN"):
+        end_i = min(i + batch_size, N)
+        dots = train_flat[i:end_i] @ train_flat.T
+        dists_sq = norms_sq[i:end_i, None] + norms_sq[None, :] - 2 * dots
+        np.maximum(dists_sq, 0, out=dists_sq)
+        dists = np.sqrt(dists_sq)
+
+        # Mask out scans from the same patient/case
+        same_case_mask = (case_ids[i:end_i, None] == case_ids[None, :])
+        dists[same_case_mask] = np.inf
+
+        min_inter_patient_dists[i:end_i] = np.min(dists, axis=1)
+
+    mean_nn_dist = float(np.mean(min_inter_patient_dists))
+    min_nn_dist = float(np.min(min_inter_patient_dists))
+
+    print(f"[*] Inter-patient Train Nearest Neighbors -> Mean: {mean_nn_dist:.4f}, Min: {min_nn_dist:.4f}")
+    return {
+        'mean': mean_nn_dist,
+        'min': min_nn_dist,
+        'all_dists': min_inter_patient_dists
+    }
 
 def evaluate_cohort_ssim(
     generator, 
@@ -92,8 +216,6 @@ def evaluate_cohort_ssim(
     if real_cohort.min() < 0.0 or real_cohort.max() > 1.0:
         real_cohort = real_cohort * 0.5 + 0.5  # Rescale from [-1, 1] to [0, 1] if needed
 
-    print(f"synthetic_cohort shape: {synthetic_cohort.shape}, real_cohort shape: {real_cohort.shape}")
-
     print("[*] Computing SSIM using Structural (SSIM-maximized) Nearest-Neighbor Matching...")
     ssim_scores = []
     ssim_output_dir = "./plots/ssim_pairs"
@@ -107,8 +229,6 @@ def evaluate_cohort_ssim(
         # Find the real test slice that maximizes SSIM (true structural match)
         for j in range(len(real_cohort)):
             real_slice = real_cohort[j, 0] if real_cohort.ndim == 4 else real_cohort[j]
-            if i == 0 and j == 0:
-                print(f"synth_slice shape: {synth_slice.shape}, real_slice shape: {real_slice.shape}")
             
             # Compute SSIM directly against candidate real slice
             score = compute_ssim(real_slice, synth_slice, data_range=1.0)
@@ -143,7 +263,6 @@ def evaluate_cohort_ssim(
     print("="*40)
     print(f"Mean SSIM : {mean_ssim:.4f}")
     print(f"Std SSIM  : {std_ssim:.4f}")
-    print(f"Target    : > 0.60 (Acceptance Criteria)")
     print("="*40)
 
     return mean_ssim, std_ssim
@@ -156,15 +275,24 @@ def audit_nearest_neighbors(
     num_neighbors=5,
     latent_dim=128,
     output_path="./plots/memorization_audit_grid.png",
-    device="cuda"
+    device="cuda",
+    compute_inter_patient_baseline=True
 ):
     """Audits synthetic images against training images for memorization and plots the neighbor grid."""
     synthetic_array = generate_synthetic_cohort(generator, num_samples=num_synthetic_samples, latent_dim=latent_dim, device=device)
-    train_array = load_dataset_as_array(train_data_dir)
+    train_array, case_ids = load_dataset_as_array(train_data_dir, return_case_ids=True)
 
     # Flatten for fast L2 distance computation
     train_flat = train_array.reshape(train_array.shape[0], -1)
     synthetic_flat = synthetic_array.reshape(synthetic_array.shape[0], -1)
+
+    # Compute inter-patient nearest neighbor benchmark in train set
+    inter_patient_stats = None
+    if compute_inter_patient_baseline:
+        inter_patient_stats = compute_inter_patient_train_nearest_neighbors(
+            train_array=train_array,
+            case_ids=case_ids
+        )
 
     print("[*] Computing nearest training neighbors...")
     audit_results = []
@@ -203,34 +331,118 @@ def audit_nearest_neighbors(
             ax.axis('off')
 
     plt.suptitle("Privacy & Memorization Audit: Synthetic Slices vs. Nearest Training Scans", fontsize=14, y=0.98)
-    plt.tight_layout()
+    if inter_patient_stats is not None:
+        subtitle_text = (
+            f"Train Set Inter-Patient Nearest Neighbor Distance (distinct cases): "
+            f"Mean = {inter_patient_stats['mean']:.2f} | Min = {inter_patient_stats['min']:.2f}"
+        )
+        plt.figtext(0.5, 0.95, subtitle_text, ha='center', fontsize=10, style='italic', color='#333333')
+        plt.tight_layout(rect=[0, 0, 1, 0.94])
+    else:
+        plt.tight_layout()
+
     plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.show()
     print("[*] Audit complete!")
 
+def evaluate_fid(
+    generator, 
+    test_data_dir="/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_test", 
+    num_samples=100, 
+    latent_dim=128, 
+    device="cuda"
+):
+    """
+    Computes Fréchet Inception Distance (FID) between synthetic cohort 
+    and reference test slices using Inception-v3 features.
+    """
+    print("[*] Initializing FID metric (Inception-v3 feature extractor)...")
+    fid = FrechetInceptionDistance(feature=2048).to(device)
+
+    # 1. Generate synthetic cohort and ensure [0, 1] range
+    synthetic_cohort = generate_synthetic_cohort(generator, num_samples=num_samples, latent_dim=latent_dim, device=device)
+    if synthetic_cohort.min() < 0.0 or synthetic_cohort.max() > 1.0:
+        synthetic_cohort = synthetic_cohort * 0.5 + 0.5  # Rescale from [-1, 1] to [0, 1] if needed
+
+    # 2. Load real test cohort and ensure [0, 1] range
+    real_cohort = load_dataset_as_array(test_data_dir, max_samples=num_samples)
+    if real_cohort.min() < 0.0 or real_cohort.max() > 1.0:
+        real_cohort = real_cohort * 0.5 + 0.5  # Rescale from [-1, 1] to [0, 1] if needed
+
+    print("[*] Processing and updating FID distributions...")
+    
+    # Process real images for Inception-v3 (expects 3-channel RGB uint8 [0, 255])
+    real_tensor = torch.from_numpy(real_cohort).float()
+    if real_tensor.ndim == 3:  # [N, H, W] -> [N, 1, H, W]
+        real_tensor = real_tensor.unsqueeze(1)
+    
+    real_uint8 = (real_tensor.clamp(0, 1) * 255).byte()
+    if real_uint8.shape[1] == 1:
+        real_uint8 = real_uint8.repeat(1, 3, 1, 1)
+        
+    # Feed real images in batches to avoid VRAM overload
+    batch_size = 16
+    for i in range(0, len(real_uint8), batch_size):
+        batch_real = real_uint8[i:i+batch_size].to(device)
+        fid.update(batch_real, real=True)
+
+    # Process synthetic images for Inception-v3
+    synth_tensor = torch.from_numpy(synthetic_cohort).float()
+    if synth_tensor.ndim == 3:  # [N, H, W] -> [N, 1, H, W]
+        synth_tensor = synth_tensor.unsqueeze(1)
+        
+    synth_uint8 = (synth_tensor.clamp(0, 1) * 255).byte()
+    if synth_uint8.shape[1] == 1:
+        synth_uint8 = synth_uint8.repeat(1, 3, 1, 1)
+
+    for i in range(0, len(synth_uint8), batch_size):
+        batch_synth = synth_uint8[i:i+batch_size].to(device)
+        fid.update(batch_synth, real=False)
+
+    print("[*] Computing final FID score...")
+    fid_score = float(fid.compute().item())
+
+    print("\n" + "="*40)
+    print(f"FID Evaluation Results (n={num_samples})")
+    print("="*40)
+    print(f"FID Score : {fid_score:.4f}")
+    print("="*40)
+
+    return fid_score
+
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # checkpoint_file = f"./checkpoints/wgan_pg_epoch_58.pth"
-    # if os.path.exists(checkpoint_file):
-    #     # Load generator once for both evaluation tasks
-    #     generator = load_generator(checkpoint_file, device=device)
+    checkpoint_file = f"./checkpoints/wgan_gp_epoch_49.pth"
+    if os.path.exists(checkpoint_file):
+        # Load generator once for both evaluation tasks
+        generator = load_generator(checkpoint_file, device=device)
         
-    #     # 1. Run SSIM Evaluation
-    #     evaluate_cohort_ssim(generator, device=device)
+        # 1. Run SSIM Evaluation
+        evaluate_cohort_ssim(generator, device=device)
         
-    #     # 2. Run Memorization Nearest-Neighbor Audit & Plot Grid
-    #     # audit_nearest_neighbors(generator, device=device)
-    # else:
-    #     print(f"[!] Checkpoint not found at {checkpoint_file}.")
+        # 2. Run Memorization Nearest-Neighbor Audit & Plot Grid
+        audit_nearest_neighbors(generator, device=device)
+
+        # 3. Run FID Evaluation
+        evaluate_fid(generator, device=device)
+
+        # 4. Generate grid and save individual images with latent vectors
+        grid_tensor, z = generate_image_grid(generator, grid_size=(8, 8), device=device, save_individual=True)
+
+    else:
+        print(f"[!] Checkpoint not found at {checkpoint_file}.")
 
     checkpoint_file_vae = f"./checkpoints/oasis_vae.pth"
     if os.path.exists(checkpoint_file_vae):
         # Load VAE generator for evaluation
-        vae_generator = load_generator(checkpoint_file_vae, type="VAE", device=device, latent_dim=10)
+        vae_generator = load_generator(checkpoint_file_vae, type="VAE", device=device)
         
         # Run SSIM Evaluation for VAE
-        evaluate_cohort_ssim(vae_generator, device=device, latent_dim=10)
+        evaluate_cohort_ssim(vae_generator, device=device)
+
+        # Run FID Evaluation for VAE
+        evaluate_fid(vae_generator, device=device)
 
     else:
         print(f"[!] Checkpoint not found at {checkpoint_file_vae}.")
