@@ -241,23 +241,6 @@ def evaluate_cohort_ssim(
                 
         ssim_scores.append(best_score)
 
-        # Save the best matching synthetic/real pair for only the first five iterations.
-        if i < 5:
-            plt.imsave(
-                os.path.join(ssim_output_dir, f"pair_{i + 1}_synthetic.png"),
-                synth_slice,
-                cmap="gray",
-                vmin=0.0,
-                vmax=1.0,
-            )
-            plt.imsave(
-                os.path.join(ssim_output_dir, f"pair_{i + 1}_real_ssim_{best_score:.4f}.png"),
-                best_real_slice,
-                cmap="gray",
-                vmin=0.0,
-                vmax=1.0,
-            )
-
     mean_ssim = np.mean(ssim_scores)
     std_ssim = np.std(ssim_scores)
 

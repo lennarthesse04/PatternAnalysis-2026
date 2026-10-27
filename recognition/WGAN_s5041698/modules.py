@@ -166,37 +166,46 @@ class ConvVAE(nn.Module):
         super(ConvVAE, self).__init__()
         self.latent_dim = latent_dim
 
-        # Classical VAE Encoder: 256x256 -> 8x8
+        # Encoder Architecture
         self.encoder = nn.Sequential(
-            nn.Conv2d(in_channels, 32, kernel_size=4, stride=2, padding=1),  # [32, 128, 128]
+            nn.Conv2d(in_channels, 32, kernel_size=4, stride=2, padding=1),  # -> [32, 128, 128]
+            nn.BatchNorm2d(32),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),  # [64, 64, 64]
+            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),  # -> [64, 64, 64]
+            nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),  # [128, 32, 32]
+            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),  # -> [128, 32, 32]
+            nn.BatchNorm2d(128),
             nn.ReLU(),
-            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),  # [256, 16, 16]
+            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),  # -> [256, 16, 16]
+            nn.BatchNorm2d(256),
             nn.ReLU(),
-            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),  # [512, 8, 8]
+            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1),  # -> [512, 8, 8]
+            nn.BatchNorm2d(512),
             nn.ReLU()
         )
 
-        # Latent space
+        # Mean and Log-Variance Linear Layers
         self.fc_mu = nn.Linear(512 * 8 * 8, latent_dim)
         self.fc_logvar = nn.Linear(512 * 8 * 8, latent_dim)
 
-        # Decoder: 8x8 -> 256x256
+        # Decoder Architecture
         self.decoder_input = nn.Linear(latent_dim, 512 * 8 * 8)
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),  # [256, 16, 16]
+            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),  # -> [256, 16, 16]
+            nn.BatchNorm2d(256),
             nn.ReLU(),
-            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),  # [128, 32, 32]
+            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),  # -> [128, 32, 32]
+            nn.BatchNorm2d(128),
             nn.ReLU(),
-            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),  # [64, 64, 64]
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),  # -> [64, 64, 64]
+            nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),  # [32, 128, 128]
+            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),  # -> [32, 128, 128]
+            nn.BatchNorm2d(32),
             nn.ReLU(),
-            nn.ConvTranspose2d(32, in_channels, kernel_size=4, stride=2, padding=1),  # [1, 256, 256]
-            nn.Tanh()  # Output in [-1, 1] to match dataset
+            nn.ConvTranspose2d(32, in_channels, kernel_size=4, stride=2, padding=1),  # -> [in_channels, 256, 256]
+            nn.Sigmoid()
         )
 
     def encode(self, x):
@@ -223,7 +232,6 @@ class ConvVAE(nn.Module):
         return recon_x, mu, logvar
 
     def vae_loss_function(self, recon_x, x, mu, logvar, beta=1.0):
-        # MSE for continuous data in [-1, 1]
-        MSE = nn.functional.mse_loss(recon_x, x, reduction='sum')
+        BCE = nn.functional.binary_cross_entropy(recon_x, x, reduction='sum')
         KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-        return MSE + beta * KLD, MSE, KLD
+        return BCE + beta * KLD, BCE, KLD
