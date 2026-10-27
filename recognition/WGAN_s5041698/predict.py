@@ -95,8 +95,7 @@ def generate_image_grid(generator, grid_size=(5, 5), latent_dim=128, device="cud
         
         # Save latent vectors
         torch.save(z, os.path.join(save_dir, "latent_vectors.pt"))
-        np.save(os.path.join(save_dir, "latent_vectors.npy"), z.cpu().numpy())
-        print(f"[+] Saved latent vectors to {save_dir}/latent_vectors.pt and {save_dir}/latent_vectors.npy")
+        print(f"[+] Saved latent vectors to {save_dir}/latent_vectors.pt")
         
         # Save each image separately
         for i in range(num_samples):

@@ -10,19 +10,14 @@ from modules import Critic
 from dataset import HipMRIDataset
 
 
-def load_latent_vectors(z_path=None, npy_path=None):
-    """Load latent vectors from saved files."""
+def load_latent_vectors(z_path='./plots/latent_vectors.pt'):
+    """Load latent vectors from saved PyTorch file."""
     if z_path and os.path.exists(z_path):
         z = torch.load(z_path)
         print(f"[+] Loaded latent vectors from {z_path}: shape {z.shape}")
         return z
-    elif npy_path and os.path.exists(npy_path):
-        z_np = np.load(npy_path)
-        z = torch.from_numpy(z_np)
-        print(f"[+] Loaded latent vectors from {npy_path}: shape {z.shape}")
-        return z
     else:
-        raise FileNotFoundError("No latent vector file found. Check latent_vectors.pt or latent_vectors.npy")
+        raise FileNotFoundError(f"Latent vector file not found: {z_path}")
 
 
 def perturb_latent_space(generator, z_base, num_perturbations=5, noise_scale=0.5, device='cuda'):
@@ -128,8 +123,7 @@ def generate_selected_images(selected_indices, generator, device, z=None,
     print(f"Using device: {device}")
     
     if z is None:
-        z = load_latent_vectors(z_path='./plots/latent_vectors.pt',
-                                npy_path='./plots/latent_vectors.npy')
+        z = load_latent_vectors(z_path='./plots/latent_vectors.pt')
     
     valid_indices = [i for i in selected_indices if 0 <= i < z.shape[0]]
     if len(valid_indices) != len(selected_indices):
