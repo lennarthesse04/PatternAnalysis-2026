@@ -28,4 +28,3 @@ Using device: cpu
 [*] Generated: mean=-353.9752, std=24.1412 (n=64)
 [*] Real: mean=-309.4271, std=13.7768 (n=64)
 [*] Wasserstein estimate (real - fake): 44,5481
-[*] Higher real than fake means the critic separates real from generated images.

@@ -88,6 +88,8 @@ def generate_image_grid(generator, grid_size=(5, 5), latent_dim=128, device="cud
         
         # Arrange images into a grid
         grid_tensor = vutils.make_grid(fake_imgs, nrow=cols, normalize=False)
+
+    os.makedirs(save_dir, exist_ok=True)
     
     if save_individual:
         os.makedirs(os.path.join(save_dir, "individual"), exist_ok=True)

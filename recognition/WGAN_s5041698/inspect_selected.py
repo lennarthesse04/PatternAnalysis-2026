@@ -10,7 +10,8 @@ from modules import Critic
 from dataset import HipMRIDataset
 
 
-def load_latent_vectors(z_path='./plots/latent_vectors.pt'):
+
+def load_latent_vectors(z_path='./plots/WGAN_synth/latent_vectors.pt'):
     """Load latent vectors from saved PyTorch file."""
     if z_path and os.path.exists(z_path):
         z = torch.load(z_path)
@@ -50,7 +51,7 @@ def perturb_latent_space(generator, z_base, num_perturbations=5, noise_scale=0.5
 
 def check_mode_collapse(generator, z_selected, valid_indices, num_perturbations=5,
                         noise_scales=[0.1, 0.3, 0.5], device='cuda',
-                        output_dir='./plots/selected_inspection/mode_collapse_check'):
+                        output_dir='./plots/WGAN_synth/selected_inspection/mode_collapse_check'):
     """For each selected index, add small random noise to latent vectors and plot."""
     os.makedirs(output_dir, exist_ok=True)
     generator.eval()
@@ -145,7 +146,7 @@ def generate_selected_images(selected_indices, generator, device, z=None,
             fake_imgs = generator(z_selected)
         fake_imgs = fake_imgs * 0.5 + 0.5
     
-    os.makedirs('./plots/selected_inspection', exist_ok=True)
+    os.makedirs('./plots/WGAN_synth/selected_inspection', exist_ok=True)
     
     grid = make_grid(fake_imgs, nrow=min(4, len(fake_imgs)), normalize=False)
     grid_np = grid.permute(1, 2, 0).cpu().numpy()
@@ -153,9 +154,9 @@ def generate_selected_images(selected_indices, generator, device, z=None,
     plt.imshow(grid_np, cmap='gray' if grid_np.shape[2] == 1 else None)
     plt.axis('off')
     plt.title(f'Selected Indices: {valid_indices}')
-    plt.savefig('./plots/selected_inspection/selected_grid.png', dpi=300, bbox_inches='tight')
+    plt.savefig('./plots/WGAN_synth/selected_inspection/selected_grid.png', dpi=300, bbox_inches='tight')
     plt.close()
-    print(f"[+] Saved overview grid to ./plots/selected_inspection/selected_grid.png")
+    print(f"[+] Saved overview grid to ./plots/WGAN_synth/selected_inspection/selected_grid.png")
     
     if run_mode_collapse_check:
         print("\n[*] Running mode collapse check...")
@@ -208,7 +209,6 @@ def check_critic_functionality(selected_indices, generator, critic, device,
               f"std={real_outputs.std().item():.4f} (n={real_outputs.shape[0]})")
         wasserstein_estimate = real_outputs.mean().item() - critic_outputs.mean().item()
         print(f"[*] Wasserstein estimate (real - fake): {wasserstein_estimate:.4f}")
-        print("[*] Higher real than fake means the critic separates real from generated images.")
 
 
 if __name__ == '__main__':
