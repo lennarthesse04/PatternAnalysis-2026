@@ -5,6 +5,8 @@ import torchvision.utils as vutils
 import numpy as np
 from torchmetrics.image.fid import FrechetInceptionDistance
 from skimage.metrics import structural_similarity as compute_ssim
+from sklearn.decomposition import PCA
+import umap
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from dataset import HipMRIDataset
@@ -410,6 +412,81 @@ def evaluate_fid(
 
     return fid_score
 
+def plot_umap_distribution(
+    generator,
+    data_dir="/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_train",
+    num_samples=2000,
+    latent_dim=128,
+    pca_components=50,
+    n_neighbors=15,
+    min_dist=0.1,
+    random_state=42,
+    output_path="./plots/umap_distribution_comparison.png",
+    device="cuda"
+):
+    """
+    Computes and plots a 2D UMAP projection comparing real dataset slices (blue)
+    and generated images (red), using PCA first for initial dimensionality reduction.
+    """
+    print("\n[*] Starting UMAP distribution comparison...")
+    # 1. Generate synthetic images
+    synth_imgs = generate_synthetic_cohort(generator, num_samples=num_samples, latent_dim=latent_dim, device=device)
+    # Ensure shape [N, C, H, W] or [N, H, W] -> flatten to [N, pixels]
+    N_synth = synth_imgs.shape[0]
+    synth_flat = synth_imgs.reshape(N_synth, -1)
+
+    # 2. Load real dataset samples
+    real_imgs = load_dataset_as_array(data_dir, max_samples=num_samples)
+    N_real = real_imgs.shape[0]
+    real_flat = real_imgs.reshape(N_real, -1)
+
+    print(f"[*] Collected {N_real} real samples and {N_synth} synthetic samples for UMAP analysis.")
+
+    # 3. Combine samples for a shared projection space
+    combined_flat = np.concatenate([real_flat, synth_flat], axis=0)
+
+    # Step 1: PCA to reduce noise and dimensionality
+    print(f"[*] Running PCA reduction to {pca_components} components...")
+    pca = PCA(n_components=pca_components, random_state=random_state)
+    combined_pca = pca.fit_transform(combined_flat)
+
+    # Step 2: UMAP projection to 2D
+    print(f"[*] Running UMAP projection to 2D...")
+    umap_reducer = umap.UMAP(
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        metric='euclidean',
+        random_state=random_state
+    )
+    combined_2d = umap_reducer.fit_transform(combined_pca)
+
+    real_2d = combined_2d[:N_real]
+    synth_2d = combined_2d[N_real:]
+
+    # Step 3: Plot the distributions
+    print(f"[*] Plotting UMAP distribution comparison to {output_path}...")
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    plt.figure(figsize=(9, 7))
+    plt.scatter(
+        real_2d[:, 0], real_2d[:, 1],
+        c='royalblue', alpha=0.5, s=12, label='Real Dataset'
+    )
+    plt.scatter(
+        synth_2d[:, 0], synth_2d[:, 1],
+        c='red', alpha=0.5, s=12, label='Generated'
+    )
+    plt.title("2D UMAP Distribution: Real Dataset vs. Generated Images", fontsize=13, fontweight='bold')
+    plt.xlabel("UMAP Dimension 1")
+    plt.ylabel("UMAP Dimension 2")
+    plt.legend(loc='best', frameon=True)
+    plt.grid(True, linestyle='--', alpha=0.5)
+
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.show()
+    plt.close()
+    print(f"[+] Saved UMAP plot to '{output_path}'")
+
+
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -430,6 +507,9 @@ if __name__ == "__main__":
         # 4. Generate grid and save individual images with latent vectors
         grid_tensor, z = generate_image_grid(generator, grid_size=(8, 8), device=device, save_individual=True)
 
+        # 5. Run UMAP Distribution Comparison
+        plot_umap_distribution(generator, device=device)
+
     else:
         print(f"[!] Checkpoint not found at {checkpoint_file}.")
 
@@ -438,10 +518,10 @@ if __name__ == "__main__":
         # Load VAE generator for evaluation
         vae_generator = load_generator(checkpoint_file_vae, type="VAE", device=device)
         
-        # Run SSIM Evaluation for VAE
+        # 1. Run SSIM Evaluation for VAE comparison
         evaluate_cohort_ssim(vae_generator, device=device)
 
-        # Run FID Evaluation for VAE
+        # 2. Run FID Evaluation for VAE comparison
         evaluate_fid(vae_generator, device=device)
 
     else:
