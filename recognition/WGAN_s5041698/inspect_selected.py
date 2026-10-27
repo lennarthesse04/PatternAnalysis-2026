@@ -123,7 +123,7 @@ def generate_selected_images(selected_indices, generator, device, z=None,
     print(f"Using device: {device}")
     
     if z is None:
-        z = load_latent_vectors(z_path='./plots/latent_vectors.pt')
+        z = load_latent_vectors(z_path='./plots/WGAN_synth/latent_vectors.pt')
     
     valid_indices = [i for i in selected_indices if 0 <= i < z.shape[0]]
     if len(valid_indices) != len(selected_indices):
@@ -172,7 +172,7 @@ def check_critic_functionality(selected_indices, generator, critic, device,
     generator.eval()
     critic.eval()
     
-    z = load_latent_vectors(z_path='./plots/latent_vectors.pt', npy_path='./plots/latent_vectors.npy')
+    z = load_latent_vectors(z_path='./plots/WGAN_synth/latent_vectors.pt')
 
     valid_indices = [i for i in selected_indices if 0 <= i < z.shape[0]]
     if len(valid_indices) != len(selected_indices):

@@ -111,9 +111,9 @@ def generate_image_grid(generator, grid_size=(5, 5), latent_dim=128, device="cud
     plt.figure(figsize=(16, 16))
     plt.imshow(grid_np, cmap="gray" if grid_np.shape[2] == 1 else None)
     plt.axis("off")
-    plt.savefig(f"{save_dir}/individual/synthetic_grid.png", dpi=300, bbox_inches='tight')
+    plt.savefig(f"{save_dir}/synthetic_grid.png", dpi=300, bbox_inches='tight')
     plt.close()
-    print(f"[+] Saved synthetic image grid to {save_dir}/individual/synthetic_grid.png")
+    print(f"[+] Saved synthetic image grid to {save_dir}/synthetic_grid.png")
 
     return grid_tensor, z
 
@@ -504,7 +504,7 @@ if __name__ == "__main__":
         evaluate_fid(generator, device=device)
 
         # 4. Generate grid and save individual images with latent vectors
-        grid_tensor, z = generate_image_grid(generator, grid_size=(8, 8), device=device, save_individual=True)
+        generate_image_grid(generator, grid_size=(8, 8), device=device, save_individual=True, save_dir="./plots/WGAN_synth")
 
         # 5. Run UMAP Distribution Comparison
         plot_umap_distribution(generator, device=device)
@@ -522,6 +522,9 @@ if __name__ == "__main__":
 
         # 2. Run FID Evaluation for VAE comparison
         evaluate_fid(vae_generator, device=device)
+
+        # 3. Run UMAP Distribution Comparison for VAE comparison
+        generate_image_grid(vae_generator, grid_size=(8, 8), device=device, save_individual=False, save_dir="./plots/VAE_synth")
 
     else:
         print(f"[!] Checkpoint not found at {checkpoint_file_vae}.")
