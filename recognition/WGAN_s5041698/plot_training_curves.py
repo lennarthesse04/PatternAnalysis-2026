@@ -10,8 +10,6 @@ def plot_training_curves(csv_path: str, output_path: str = None):
     # Load metrics
     df = pd.read_csv(csv_path)
 
-    # Set up matplotlib style/figure
-    plt.style.use("seaborn-v0_8-whitegrid" if "seaborn-v0_8-whitegrid" in plt.style.available else "default")
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), dpi=300)
 
     # Critic Loss Subplot
