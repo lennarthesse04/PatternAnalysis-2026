@@ -1,4 +1,5 @@
 import os
+import time
 import torch
 import torch.optim as optim
 from modules import ConvVAE
@@ -16,6 +17,8 @@ def train_vae(train_dataloader, epochs=100, checkpoint_path="./checkpoints/oasis
     checkpoint_dir = os.path.dirname(checkpoint_path)
     if checkpoint_dir:
         os.makedirs(checkpoint_dir, exist_ok=True)
+
+    start_time = time.time()
 
     print("\n--- Starting VAE Training ---")
     for epoch in range(1, epochs + 1):
@@ -60,8 +63,11 @@ def train_vae(train_dataloader, epochs=100, checkpoint_path="./checkpoints/oasis
             torch.save(model.state_dict(), checkpoint_path)
             print(f"[*] Best model saved at epoch {epoch:02d} with {loss_label}: {best_loss:.2f} -> {checkpoint_path}")
 
+    elapsed_time = time.time() - start_time
+    elapsed_minutes = elapsed_time / 60
+    
     if best_epoch != -1:
-        print(f"\n[+] Training complete. Best model saved from epoch {best_epoch:02d} ({loss_label}: {best_loss:.2f}) to {checkpoint_path}")
+        print(f"\n[+] Training complete in {elapsed_minutes:.2f} minutes. Best model saved from epoch {best_epoch:02d} ({loss_label}: {best_loss:.2f}) to {checkpoint_path}")
     else:
         print("\n[!] Training complete. No model checkpoint was saved.")
 
