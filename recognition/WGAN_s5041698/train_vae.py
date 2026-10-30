@@ -22,6 +22,9 @@ def train_vae(train_dataloader, epochs=100, checkpoint_path="./checkpoints/oasis
 
     print("\n--- Starting VAE Training ---")
     for epoch in range(1, epochs + 1):
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats(device)
+
         model.train()
         train_loss, total_bce, total_kld = 0.0, 0.0, 0.0
 
@@ -48,10 +51,15 @@ def train_vae(train_dataloader, epochs=100, checkpoint_path="./checkpoints/oasis
         avg_train_bce = total_bce / num_batches
         avg_train_kld = total_kld / num_batches
 
+        peak_vram_gb = 0.0
+        if torch.cuda.is_available():
+            peak_vram_gb = torch.cuda.max_memory_allocated(device) / (1024 ** 3)
+
         print(f"Epoch {epoch:02d}/{epochs:02d} | "
                 f"Loss: {avg_train_loss:.2f} | "
                 f"BCE: {avg_train_bce:.2f} | "
-                f"KLD: {avg_train_kld:.2f}")
+                f"KLD: {avg_train_kld:.2f} | "
+                f"Peak VRAM: {peak_vram_gb:.2f} GB")
 
         current_loss = avg_train_loss
         loss_label = "train loss"
