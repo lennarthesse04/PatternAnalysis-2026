@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import torch
 import torchvision.utils as vutils
 import numpy as np
@@ -37,6 +38,12 @@ def generate_synthetic_cohort(generator, num_samples=500, latent_dim=128, batch_
     print(f"[*] Generating synthetic cohort of {num_samples} samples...")
     synthetic_images_list = []
 
+    generation_time = 0.0
+
+    is_cuda = (device.type == "cuda") if isinstance(device, torch.device) else str(device).startswith("cuda")
+    if torch.cuda.is_available() and is_cuda:
+        torch.cuda.reset_peak_memory_stats(device)
+
     with torch.no_grad():
         generated_count = 0
         while generated_count < num_samples:
@@ -45,17 +52,28 @@ def generate_synthetic_cohort(generator, num_samples=500, latent_dim=128, batch_
 
             # Check if it's a VAE or a GAN Generator
             if hasattr(generator, "decode"):
+                start_time = time.time()
                 fake_imgs = generator.decode(z)
+                end_time = time.time()
+                generation_time += (end_time - start_time)
                 # VAE outputs in [0,1] (Sigmoid) -> convert to [-1,1] for compatibility
                 fake_imgs = fake_imgs * 2.0 - 1.0
             else:
+                start_time = time.time()
                 fake_imgs = generator(z)
+                end_time = time.time()
+                generation_time += (end_time - start_time)
 
             # Rescale from generator output range [-1, 1] to [0, 1]
             fake_imgs = fake_imgs * 0.5 + 0.5
             synthetic_images_list.append(fake_imgs.cpu().numpy())
             generated_count += curr_batch_size
 
+    peak_vram_gb = 0.0
+    if torch.cuda.is_available() and is_cuda:
+        peak_vram_gb = torch.cuda.max_memory_allocated(device) / (1024 ** 3)
+
+    print(f"[*] Total generation time: {generation_time:.6f} seconds | Peak VRAM: {peak_vram_gb:.2f} GB")
     return np.concatenate(synthetic_images_list, axis=0)
 
 
@@ -72,6 +90,10 @@ def generate_image_grid(generator, grid_size=(5, 5), latent_dim=128, device="cud
 
     print(f"[*] Generating image grid of size {grid_size} ({num_samples} samples)...")
     
+    is_cuda = (device.type == "cuda") if isinstance(device, torch.device) else str(device).startswith("cuda")
+    if torch.cuda.is_available() and is_cuda:
+        torch.cuda.reset_peak_memory_stats(device)
+
     with torch.no_grad():
         # Sample latent vectors
         z = torch.randn(num_samples, latent_dim, device=device)
@@ -88,6 +110,11 @@ def generate_image_grid(generator, grid_size=(5, 5), latent_dim=128, device="cud
         
         # Arrange images into a grid
         grid_tensor = vutils.make_grid(fake_imgs, nrow=cols, normalize=False)
+
+    peak_vram_gb = 0.0
+    if torch.cuda.is_available() and is_cuda:
+        peak_vram_gb = torch.cuda.max_memory_allocated(device) / (1024 ** 3)
+    print(f"[*] Grid generation complete | Peak VRAM: {peak_vram_gb:.2f} GB")
 
     os.makedirs(save_dir, exist_ok=True)
     
@@ -257,14 +284,20 @@ def evaluate_cohort_ssim(
 def audit_nearest_neighbors(
     generator,
     train_data_dir="/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_train",
-    num_synthetic_samples=5,
+    num_synthetic_samples=500,
+    top_k_synthetic=5,
     num_neighbors=5,
     latent_dim=128,
     output_path="./plots/memorization_audit_grid.png",
     device="cuda",
     compute_inter_patient_baseline=True
 ):
-    """Audits synthetic images against training images for memorization and plots the neighbor grid."""
+    """
+    Audits a batch of synthetic images against training images for memorization.
+    Screens num_synthetic_samples generated images to identify the top_k_synthetic 
+    samples that are closest to any training image, then plots each with its 
+    nearest training neighbors.
+    """
     synthetic_array = generate_synthetic_cohort(generator, num_samples=num_synthetic_samples, latent_dim=latent_dim, device=device)
     train_array, case_ids = load_dataset_as_array(train_data_dir, return_case_ids=True)
 
@@ -280,30 +313,47 @@ def audit_nearest_neighbors(
             case_ids=case_ids
         )
 
-    print("[*] Computing nearest training neighbors...")
-    audit_results = []
+    print(f"[*] Finding closest training images across {num_synthetic_samples} synthetic candidates...")
+    min_synth_dists = np.empty(num_synthetic_samples, dtype=np.float32)
+    cached_nearest_train_idx = []
+    cached_nearest_train_dists = []
 
-    for i in range(num_synthetic_samples):
+    for i in tqdm(range(num_synthetic_samples)):
         synth_vec = synthetic_flat[i]
         distances = np.linalg.norm(train_flat - synth_vec, axis=1)
         nearest_indices = np.argsort(distances)[:num_neighbors]
         nearest_distances = distances[nearest_indices]
-        
+
+        min_synth_dists[i] = nearest_distances[0]
+        cached_nearest_train_idx.append(nearest_indices)
+        cached_nearest_train_dists.append(nearest_distances)
+
+    # Select the top_k synthetic samples with the smallest minimum distance to the training set (highest memorization risk)
+    top_synth_indices = np.argsort(min_synth_dists)[:top_k_synthetic]
+
+    audit_results = []
+    print(f"[*] Top {top_k_synthetic} closest synthetic samples to training set:")
+    for rank, synth_idx in enumerate(top_synth_indices):
+        nearest_indices = cached_nearest_train_idx[synth_idx]
+        nearest_distances = cached_nearest_train_dists[synth_idx]
+
         audit_results.append({
-            'synthetic_img': synthetic_array[i, 0],
-            'neighbor_imgs': [train_array[idx] for idx in nearest_indices],
+            'synthetic_idx': synth_idx,
+            'synthetic_img': synthetic_array[synth_idx, 0] if synthetic_array.ndim == 4 else synthetic_array[synth_idx],
+            'neighbor_imgs': [train_array[idx, 0] if train_array.ndim == 4 else train_array[idx] for idx in nearest_indices],
             'distances': nearest_distances
         })
-        print(f"  -> Synthetic Sample {i+1}: Closest Training Neighbor Distance = {nearest_distances[0]:.4f}")
+        print(f"  -> Rank {rank+1} (Synthetic #{synth_idx+1}): Closest Training Neighbor Distance = {nearest_distances[0]:.4f}")
 
     print(f"[*] Saving visual audit grid to {output_path}...")
-    fig, axes = plt.subplots(num_synthetic_samples, num_neighbors + 1, figsize=(14, 3 * num_synthetic_samples))
-    if num_synthetic_samples == 1:
+    num_rows = len(audit_results)
+    fig, axes = plt.subplots(num_rows, num_neighbors + 1, figsize=(14, 3 * num_rows))
+    if num_rows == 1:
         axes = np.expand_dims(axes, axis=0)
 
     for i, res in enumerate(audit_results):
         axes[i, 0].imshow(res['synthetic_img'], cmap='gray')
-        axes[i, 0].set_title(f"Synthetic #{i+1}" if i == 0 else "", fontsize=10)
+        axes[i, 0].set_title(f"Synthetic #{res['synthetic_idx']+1}\n(Closest in batch)", fontsize=9)
         axes[i, 0].axis('off')
         
         for spine in axes[i, 0].spines.values():
@@ -316,7 +366,7 @@ def audit_nearest_neighbors(
             ax.set_title(f"Neighbor {j+1}\n(Dist: {dist:.1f})" if i == 0 else f"Dist: {dist:.1f}", fontsize=8)
             ax.axis('off')
 
-    plt.suptitle("Privacy & Memorization Audit: Synthetic Slices vs. Nearest Training Scans", fontsize=14, y=0.98)
+    plt.suptitle("Privacy & Memorization Audit: Closest Synthetic Slices vs. Nearest Training Scans", fontsize=14, y=0.98)
     if inter_patient_stats is not None:
         subtitle_text = (
             f"Train Set Inter-Patient Nearest Neighbor Distance (distinct cases): "
@@ -334,7 +384,7 @@ def audit_nearest_neighbors(
 def evaluate_fid(
     generator, 
     test_data_dir="/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_test", 
-    num_samples=100, 
+    num_samples=1000, 
     latent_dim=128, 
     device="cuda"
 ):
@@ -497,6 +547,8 @@ if __name__ == "__main__":
     else:
         print(f"[!] Checkpoint not found at {checkpoint_file}.")
 
+    print("\n")
+
     checkpoint_file_vae = f"./checkpoints/oasis_vae.pth"
     if os.path.exists(checkpoint_file_vae):
         # Load VAE generator for evaluation
@@ -508,7 +560,7 @@ if __name__ == "__main__":
         # 2. Run FID Evaluation for VAE comparison
         evaluate_fid(vae_generator, device=device)
 
-        # 3. Run UMAP Distribution Comparison for VAE comparison
+        # 3. Generate grid and save individual images with latent vectors
         generate_image_grid(vae_generator, grid_size=(8, 8), device=device, save_individual=False, save_dir="./plots/VAE_synth")
 
     else:
