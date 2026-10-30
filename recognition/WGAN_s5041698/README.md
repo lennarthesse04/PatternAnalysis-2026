@@ -29,8 +29,8 @@ flowchart LR
     %% Loss & Feedback Connections
     Pred --> GenLoss
     Pred --> DiscLoss
-    GenLoss -->|"Back<br/>propagation<br/><span style='font-family:serif;'>∇<sub><i>θ<sub>G</sub></i></sub> ℒ<sub><i>G</i></sub></span>"| Gen
-    DiscLoss -->|"Back<br/>propagation<br/><span style='font-family:serif;'>∇<sub><i>θ<sub>D</sub></i></sub> ℒ<sub><i>D</i></sub></span>"| Disc
+    GenLoss -->|"Back<br/>propagation<br/>"| Gen
+    DiscLoss -->|"Back<br/>propagation<br/>"| Disc
 
     %% Styling to match reference image layout & colors
     classDef noiseStyle fill:#d1d5db,stroke:#9ca3af,stroke-width:2px,color:#111827,font-weight:bold
